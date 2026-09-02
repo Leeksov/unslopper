@@ -1,0 +1,32 @@
+# Build output
+/build/
+*.o
+*.dylib
+*.so
+
+# IDA databases & analysis artifacts (large, regenerable)
+*.i64
+*.idb
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+*.asm
+
+# Test working dirs (licensed IDAUSR copies, scratch DBs)
+/tests/work/
+/samples-ios/*.i64
+/samples-android/*.i64
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editor
+*.swp
+*~
+
+# Target sample binaries (copyrighted commercial apps — never commit/push)
+/samples-ios/
+/samples-android/
