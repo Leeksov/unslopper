@@ -1,8 +1,8 @@
-# Deslop
+# Unslopper
 
 **A unified Hex-Rays microcode deobfuscator for commercial mobile protectors.**
 
-Deslop is an IDA Pro 9.4 plugin (`deflat.dylib`) that removes control-flow
+Unslopper is an IDA Pro 9.4 plugin (`unslopper.dylib`) that removes control-flow
 flattening (CFF), collapses opaque/MBA algebra, and resolves obfuscated
 dispatch across several commercial iOS/Android hardening products — from one
 codebase, behind a single `F5`.
@@ -16,7 +16,7 @@ function regardless of flattening.
 
 ## Supported protectors
 
-| Family | Obfuscation | Deslop handling | Status |
+| Family | Obfuscation | Unslopper handling | Status |
 |---|---|---|---|
 | **OLLVM / Hikari** | magic-constant CFF (scramble32 states) | `profiles/ollvm` + core | ✅ verified |
 | **Promon SHIELD** | BST CFF + register pools + opaque predicates | `profiles/promon` | ✅ verified |
@@ -26,7 +26,7 @@ function regardless of flattening.
 | **Arxan-class (branding-stripped)** | MBA computed branches, integrity, direct syscalls | `passes/opaque_mba` + `passes/svc_resolver` | ⚠️ core covered¹ |
 
 ¹ Arxan's dominant `(a^b)+2·(a&b)→a+b` branch transform is already folded by
-Hex-Rays 9.4; Deslop's MBA layer clears the residual data-flow MBA (measured
+Hex-Rays 9.4; Unslopper's MBA layer clears the residual data-flow MBA (measured
 21→11 residual-MBA functions on a 120-function sample). See
 [coverage_matrix.md](docs/coverage_matrix.md) for the full breakdown and honest
 limits.
@@ -35,7 +35,7 @@ limits.
 
 ## How it works
 
-Deslop installs a block-level microcode optimizer (`optblock_t`) that fires
+Unslopper installs a block-level microcode optimizer (`optblock_t`) that fires
 once per function at Hex-Rays' local- and global-optimization maturities, so its
 edits are re-structured into clean `if`/`while` by the decompiler afterwards.
 
@@ -65,7 +65,7 @@ Requires the IDA SDK 9.4 and a C++17 toolchain (arm64 macOS).
 export IDASDK=/path/to/ida-sdk          # or place it at ../../tools/idasdk/ida-sdk
 cmake -S . -B build -G Ninja
 ninja -C build
-# → links deflat.dylib into $IDASDK/src/bin/plugins/
+# → links unslopper.dylib into $IDASDK/src/bin/plugins/
 ```
 
 ## Install
@@ -73,7 +73,7 @@ ninja -C build
 Symlink (or copy) the built plugin into IDA's user plugin directory:
 
 ```sh
-ln -sf "$IDASDK/src/bin/plugins/deflat.dylib" ~/.idapro/plugins/deflat.dylib
+ln -sf "$IDASDK/src/bin/plugins/unslopper.dylib" ~/.idapro/plugins/unslopper.dylib
 ```
 
 The optimizer installs itself when a database opens; just press **F5**.
@@ -81,8 +81,8 @@ The optimizer installs itself when a database opens; just press **F5**.
 ## Usage
 
 - **F5** on any function — flattening and opaque algebra are removed inline.
-- **Toggle / status** via the plugin (`Edit ▸ Plugins ▸ Deslop`, or
-  `load_and_run_plugin("deflat", arg)`):
+- **Toggle / status** via the plugin (`Edit ▸ Plugins ▸ Unslopper`, or
+  `load_and_run_plugin("unslopper", arg)`):
 
   | arg | action |
   |---|---|
@@ -116,12 +116,12 @@ headless-verified scripts in [`tools/`](tools/):
 ## Layout
 
 ```
-deflat-toolkit/
+unslopper/
 ├── src/
 │   ├── plugin.cpp            # entry: optblock pipeline + toggle/actions
-│   ├── deflat_types.h        # ProfileKind, DispatcherInfo, StateTransition
+│   ├── unslop_types.h        # ProfileKind, DispatcherInfo, StateTransition
 │   ├── profile.h             # Profile interface + registry
-│   ├── deslop_log.*          # leveled diagnostics
+│   ├── unslop_log.*          # leveled diagnostics
 │   ├── core/                 # CFF recovery engine
 │   │   ├── dispatcher.*      #   dispatcher detection (max-pred/jtbl/BST)
 │   │   ├── state_resolver.*  #   state-value resolution
@@ -155,7 +155,7 @@ rationale, and how to add a new protector profile or pass.
 
 ## Scope & ethics
 
-Deslop is a research tool for **authorized** reverse engineering, security
+Unslopper is a research tool for **authorized** reverse engineering, security
 analysis, and interoperability work on binaries you have the right to analyze.
 It reads and annotates static databases; it does not bypass DRM, defeat
 licensing, or aid piracy.
