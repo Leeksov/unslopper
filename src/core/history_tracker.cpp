@@ -490,4 +490,53 @@ std::vector<uint64_t> possible_state_values(mba_t *mba, mblock_t *father,
   return r.values;
 }
 
+std::vector<uint64_t> state_values_via_pred(mba_t *mba, mblock_t *blk,
+                                            int pred_serial,
+                                            const DispatcherInfo &di,
+                                            int max_depth)
+{
+  std::vector<uint64_t> out;
+  if ( mba == nullptr || blk == nullptr )
+    return out;
+  if ( pred_serial < 0 || pred_serial >= mba->qty )
+    return out;
+
+  // Pass 1: does `blk` install the carrier ABSOLUTELY (independent of the value
+  // that flowed in)? Then the predecessor is irrelevant and the state is exact.
+  {
+    Env env;
+    emulate_block_body(di, blk, env);
+    auto v = read_carrier(di, env);
+    if ( v )
+    {
+      out.push_back(*v & STATE_MASK);
+      return out;
+    }
+  }
+
+  // Pass 2: the block leaves / relatively-updates the carrier. Fetch the
+  // value(s) flowing OUT of the chosen predecessor only, then re-emulate `blk`
+  // once per incoming value so relative updates fold. Any unknown collapses the
+  // whole result to empty (never a guess).
+  CarrierVals in = resolve_carrier_out(mba, di, pred_serial, max_depth,
+                                       std::set<int>());
+  if ( !in.known || in.vals.empty() || in.vals.size() > MAX_VISIT_VALUES )
+    return out;
+
+  std::set<uint64_t> seen;
+  for ( uint64_t inv : in.vals )
+  {
+    Env env;
+    set_carrier(di, env, inv);
+    emulate_block_body(di, blk, env);
+    auto v = read_carrier(di, env);
+    if ( !v )
+      return std::vector<uint64_t>();   // block turns a known input into unknown
+    uint64_t k = *v & STATE_MASK;
+    if ( seen.insert(k).second )
+      out.push_back(k);
+  }
+  return out;
+}
+
 } // namespace unslop

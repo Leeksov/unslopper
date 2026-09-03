@@ -69,4 +69,18 @@ std::vector<uint64_t> possible_state_values(mba_t *mba,
                                             const DispatcherInfo &di,
                                             int max_depth = 32);
 
+// Resolve the state value(s) `blk` installs assuming control reached it ONLY
+// via predecessor `pred_serial`. Used by the hardened PHASE-C duplication guard
+// (STEP 3): a father is split for a given predecessor only when THAT
+// predecessor's history resolves to a single state (size()==1), so duplication
+// is monotonic - it never manufactures a wrong-but-verifiable edge and never
+// bloats the graph with copies that cannot resolve. If the block installs the
+// state absolutely (independent of the incoming value) the single install value
+// is returned. Empty means the per-predecessor history is not determinable.
+std::vector<uint64_t> state_values_via_pred(mba_t *mba,
+                                            mblock_t *blk,
+                                            int pred_serial,
+                                            const DispatcherInfo &di,
+                                            int max_depth = 32);
+
 } // namespace unslop
