@@ -30,3 +30,6 @@
 # Target sample binaries (copyrighted commercial apps — never commit/push)
 /samples-ios/
 /samples-android/
+
+# Generated per-binary evidence sidecars
+/evidence/

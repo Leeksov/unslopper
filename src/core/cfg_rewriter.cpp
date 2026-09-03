@@ -104,18 +104,40 @@ struct PlannedEdge
 //=========================================================================
 namespace {
 
-// Insertion-based conditional-split / duplication are the only mutations that
-// renumber serials (via copy_block). They are OPT-IN (UNSLOP_DUP=1): correctness
-// first. The non-insertion phases (single-value edge rewrite + dead-store nop +
-// reachability prune) only ever rewrite an existing goto to a target that the
-// SAME validated BST resolver produced, so every edge they emit is correct by
-// construction. The insertion phases add blocks and re-thread the fallthrough
-// graph, a composition that must be validated on-device before it is trusted to
-// never emit a wrong-but-verifiable edge; until then it stays behind the flag.
+// Insertion-based conditional-split (PHASE B) and per-predecessor duplication
+// (PHASE C) are the last-mile "completion" that drives the dispatcher's
+// surviving real predecessors to ZERO so Hex-Rays' own DCE deletes the whole
+// state-machine tree (the clean outcome observed on 0x352CD4). They mutate the
+// graph ONLY through the sanctioned copy_block / insert_nop_blk insertion API
+// (never remove_block, never multi-father goto-collapse), so a malformed shape
+// degrades to a CATCHABLE mba->verify(true) failure -> the function is skipped
+// and the original emitted, never the uncatchable INTERR 51919 abort that the
+// removal path caused. Default ON; opt out with UNSLOP_NO_INSERT=1 to measure
+// the PHASE-A-only (edge-rewrite) behaviour in isolation.
 bool insertion_ops_enabled()
 {
   qstring env;
-  return qgetenv("UNSLOP_DUP", &env) && atoi(env.c_str()) != 0;
+  if ( qgetenv("UNSLOP_NO_INSERT", &env) && atoi(env.c_str()) != 0 )
+    return false;
+  return true;
+}
+
+// COMMIT GUARD (STEP-5 of the plan). A half-rewritten dispatcher - some direct
+// edges, some still state-machine edges over a still-live compare tree - is
+// HARDER for Hex-Rays than a fully-flattened one, which is the regression the
+// corpus showed (49D804 1->183, 1AC300 2->101, ...). The guard is a pure,
+// NON-mutating feasibility pre-pass: unless the resolution phases would drive
+// the dispatcher entry to zero surviving real predecessors (so DCE removes the
+// tree), we leave the function FULLY FLATTENED - byte-for-byte the OFF baseline
+// as far as the CFG rewrite is concerned - rather than emit a regressed shape.
+// This is what makes the register-BST rewrite safe to default ON: it can only
+// improve-or-hold, never shred. Default ON; opt out with UNSLOP_NO_GUARD=1.
+bool commit_guard_enabled()
+{
+  qstring env;
+  if ( qgetenv("UNSLOP_NO_GUARD", &env) && atoi(env.c_str()) != 0 )
+    return false;
+  return true;
 }
 
 // Is `ins` a store of a CONSTANT into the emulated memory/stack state carrier?
@@ -224,6 +246,151 @@ int update_blk_successor(mblock_t *blk, int old_succ, int new_succ)
   return 0;
 }
 
+// --- COMMIT GUARD feasibility (no mutation) -----------------------------
+// Will `blk` (a real dispatcher-father, or the entry's fallthrough pred) be
+// driven off the dispatcher by the resolution phases? Mirrors exactly what
+// PHASE A / B / C actually do. Returns the number of block DUPLICATIONS the
+// resolution will require for this father (0 for the non-insertion A / B /
+// fallthrough cases), or -1 when the father will NOT resolve. Conservative:
+// any doubt returns -1 (abort, stay flattened).
+int father_resolve_cost(mba_t *mba, mblock_t *blk, const DispatcherInfo &di,
+                        int self, bool do_insertion)
+{
+  // A: single-value father -> a real mapped target.
+  uint64_t K = 0;
+  if ( father_single_state(mba, blk, di, &K) )
+    return target_for_state(mba, di, K, self) >= 0 ? 0 : -1;
+
+  if ( do_insertion )
+  {
+    // B: two-way (jcnd) select whose two edges install two distinct mapped
+    //    states (PHASE B retargets one edge and interposes a goto on the other).
+    minsn_t *tail = blk->tail;
+    if ( tail != nullptr && tail->opcode == m_jcnd && tail->d.t == mop_b
+      && blk->nsucc() == 2 )
+    {
+      StateResolution r = resolve_father_state(mba, blk, di);
+      if ( r.resolved && r.conditional )
+      {
+        int t = target_for_state(mba, di, r.cond_true_val, self);
+        int f = target_for_state(mba, di, r.cond_false_val, self);
+        if ( t >= 0 && f >= 0 && t != f )
+          return 0;
+      }
+    }
+
+    // C: a merge / ambiguous father that resolves once each incoming history
+    //    owns a private copy. Feasible only if EVERY predecessor's history
+    //    resolves to a single mapped state (STEP-3 monotonicity: we never split
+    //    a predecessor whose history is not determinable). Cost = npred-1
+    //    duplications (the first predecessor stays attached to the original).
+    if ( blk->npred() >= 2 )
+    {
+      bool all_ok = true;
+      for ( int j = 0; j < blk->npred(); ++j )
+      {
+        std::vector<uint64_t> pv =
+            state_values_via_pred(mba, blk, blk->pred(j), di);
+        if ( pv.size() != 1 || target_for_state(mba, di, pv[0], self) < 0 )
+        {
+          all_ok = false;
+          break;
+        }
+      }
+      if ( all_ok )
+        return blk->npred() - 1;
+    }
+  }
+  return -1;
+}
+
+// The dispatcher entry's fallthrough predecessor (entry-1 physically falling
+// through into the entry), if any and if it is a real state-installing block.
+// Returns its serial or -1. STEP-4: this edge keeps the tree reachable even
+// after every goto-father is fixed, so the guard and the rewriter must both
+// account for it.
+int entry_fallthrough_pred(mba_t *mba, const DispatcherInfo &di)
+{
+  int entry = di.block_idx;
+  if ( entry <= 0 || entry >= mba->qty )
+    return -1;
+  mblock_t *de = mba->get_mblock(entry);
+  int p = entry - 1;
+  if ( !de->predset.has(p) || di.dispatcher_blocks.count(p) != 0 )
+    return -1;
+  mblock_t *pf = mba->get_mblock(p);
+  if ( pf == nullptr )
+    return -1;
+  bool falls = pf->nsucc() == 1 && pf->succ(0) == entry
+            && (pf->tail == nullptr || pf->tail->opcode != m_goto);
+  if ( !falls || all_preds_dispatcher(mba, di, pf) )
+    return -1;
+  return p;
+}
+
+// Full feasibility: would resolution drive the dispatcher entry to zero
+// surviving real predecessors, AND without excessive duplication? Pure
+// analysis; NEVER mutates.
+//
+// The duplication budget is the anti-regression lever the corpus demanded: a
+// father that needs many per-predecessor copies (0x216D98 needed 20) reshapes
+// the CFG so heavily that Hex-Rays' own handling of the flattened form is
+// usually BETTER than the recovered direct-edge graph - committing it is a
+// regression (9 -> 21 gotos). A father that resolves with little or no
+// duplication (0x352CD4 needed 1) produces a genuinely simpler graph and wins
+// (5 -> 3). So we commit only when the whole function resolves within the
+// budget; otherwise we leave it flattened (never worse than OFF). The budget is
+// deliberately conservative and errs toward "keep flattened".
+bool emulated_will_fully_resolve(mba_t *mba, const DispatcherInfo &di,
+                                 bool do_insertion)
+{
+  const int MAX_COMMIT_DUPS = 8;   // total per-predecessor copies across fathers
+  int dups = 0;
+  for ( int i = 0; i < mba->qty; ++i )
+  {
+    if ( di.dispatcher_blocks.count(i) != 0 )
+      continue;
+    if ( !gotos_dispatcher(mba, di, i) )
+      continue;
+    mblock_t *blk = mba->get_mblock(i);
+    if ( all_preds_dispatcher(mba, di, blk) )
+      continue;
+    int c = father_resolve_cost(mba, blk, di, i, do_insertion);
+    if ( c < 0 )
+    {
+      DLOG(L_DEBUG, "guard: goto-father blk %d will NOT resolve -> keep flat", i);
+      return false;
+    }
+    dups += c;
+    if ( dups > MAX_COMMIT_DUPS )
+    {
+      DLOG(L_DEBUG, "guard: duplication budget exceeded (%d > %d) at blk %d "
+                    "-> keep flat", dups, MAX_COMMIT_DUPS, i);
+      return false;
+    }
+  }
+  int fp = entry_fallthrough_pred(mba, di);
+  if ( fp >= 0 )
+  {
+    mblock_t *pf = mba->get_mblock(fp);
+    int c = father_resolve_cost(mba, pf, di, fp, do_insertion);
+    if ( c < 0 )
+    {
+      DLOG(L_DEBUG, "guard: fallthrough pred blk %d will NOT resolve -> keep flat",
+           fp);
+      return false;
+    }
+    dups += c;
+    if ( dups > MAX_COMMIT_DUPS )
+    {
+      DLOG(L_DEBUG, "guard: duplication budget exceeded (%d > %d) -> keep flat",
+           dups, MAX_COMMIT_DUPS);
+      return false;
+    }
+  }
+  return true;
+}
+
 // PRUNE + deep-clean (iterative). Collapses simple goto blocks into their
 // fathers (mba_remove_simple_goto_blocks) and removes every block unreachable
 // from entry (block 0). Removal renumbers serials, so we never consult `di`
@@ -238,38 +405,42 @@ int prune_and_clean(mba_t *mba)
   {
     again = false;
 
-    // 1. Collapse simple 1-insn goto blocks by pulling their target up into
-    //    every father. DISABLED: at GLBOPT this predecessor rewiring triggers
-    //    Hex-Rays INTERR 51919. Hex-Rays does its own goto-collapse anyway; we
-    //    only need reachability-based removal (step 2 below), which is safe.
-    for ( int i = 0; false && i < mba->qty; ++i )
+    // 1. Collapse SINGLE-FATHER simple 1-insn goto blocks by pulling their
+    //    target up into their one predecessor. The multi-father form of this
+    //    (rewiring EVERY predecessor, then dropping the whole predset) is what
+    //    triggered Hex-Rays INTERR 51919 - it renumbered serials and orphaned
+    //    use-def chain refs. Restricting to a SINGLE predecessor makes it a pure
+    //    in-place edge move (update_blk_successor re-threads succset/predset and
+    //    never removes a block): p -> g(goto dst) -> dst becomes p -> dst, g is
+    //    left unreachable for Hex-Rays' own DCE. A fallthrough edge into g is
+    //    refused in place by update_blk_successor (returns 0), so we never break
+    //    the physical fallthrough=serial+1 invariant. Bad shapes degrade to the
+    //    terminal catchable verify(), never an abort.
+    for ( int i = 1; i < mba->qty - 1; ++i )
     {
       mblock_t *blk = mba->get_mblock(i);
       if ( blk == nullptr || !blk->is_simple_goto_block() )
         continue;
-      if ( i == 0 || i == mba->qty - 1 )
+      if ( blk->npred() != 1 )            // single-father only (INTERR-safe)
         continue;
       int dst = blk->tail->l.b;
       if ( dst == i || dst < 0 || dst >= mba->qty )
         continue;
 
-      std::vector<int> preds;
-      for ( int j = 0; j < blk->npred(); ++j )
-        preds.push_back(blk->pred(j));
-      for ( int p : preds )
+      int p = blk->pred(0);
+      if ( p == dst || p < 0 || p >= mba->qty )
+        continue;
+      mblock_t *pf = mba->get_mblock(p);
+      mblock_t *tb = mba->get_mblock(dst);
+      if ( pf == nullptr || tb == nullptr )
+        continue;
+      if ( tb->predset.has(p) )           // would duplicate an edge
+        continue;
+      int n = update_blk_successor(pf, i, dst);
+      if ( n > 0 )
       {
-        mblock_t *pf = mba->get_mblock(p);
-        if ( pf == nullptr )
-          continue;
-        mblock_t *tb = mba->get_mblock(dst);
-        if ( tb->predset.has(p) )         // would duplicate an edge
-          continue;
-        int n = update_blk_successor(pf, i, dst);
-        if ( n > 0 )
-        {
-          total += n;
-          again = true;
-        }
+        total += n;
+        again = true;
       }
     }
 
@@ -343,6 +514,34 @@ int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
   const int MAX_DUP_PASSES = 200;
   bool do_insertion = insertion_ops_enabled();
 
+  // ── COMMIT GUARD (STEP 5): unless the resolution phases below would drive
+  //    the dispatcher entry to zero surviving real predecessors, leave the
+  //    function fully flattened rather than emit a half-rewritten (regressed)
+  //    dispatcher. Returning 0 here does NOT mutate the mba, so the output is
+  //    the original flattened form - never worse than the OFF baseline. ──
+  if ( commit_guard_enabled() )
+  {
+    // A trivially small comparison tree (only a handful of nodes) is one that
+    // Hex-Rays already re-structures cleanly from the flattened form, so
+    // deflattening it has NO upside and can only add an edge or two - a small
+    // but real regression (the 0x313920 3-node case: OFF 0 gotos -> 1). Skip
+    // it: keep the function flattened and let Hex-Rays handle the tiny switch.
+    const size_t MIN_DEFLAT_TREE = 4;   // < 4 comparison nodes: not worth it
+    if ( di->dispatcher_blocks.size() < MIN_DEFLAT_TREE )
+    {
+      DLOG(L_INFO, "commit guard: tree too small (%d nodes) to benefit from "
+                   "deflattening; leaving flattened",
+           int(di->dispatcher_blocks.size()));
+      return 0;
+    }
+    if ( !emulated_will_fully_resolve(mba, *di, do_insertion) )
+    {
+      DLOG(L_INFO, "commit guard: dispatcher would not fully resolve; "
+                   "leaving function flattened (set UNSLOP_NO_GUARD=1 to force)");
+      return 0;
+    }
+  }
+
   // ── Resolution loop (single-value + conditional-split + duplication). No
   //    block REMOVAL happens here so serials only ever shift UP via inserts,
   //    which di_shift_up_from tracks; di.state_map / block_state stay valid. ──
@@ -406,6 +605,43 @@ int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
       }
     }
     step_verify_emu(mba, "edges");
+
+    // ---- STEP 4: break the FALLTHROUGH predecessor into the dispatcher entry.
+    //      update_blk_successor refuses to move a fallthrough edge in place, so
+    //      PHASE A can never redirect the entry-1 block that physically falls
+    //      through into the entry; that single non-goto edge silently keeps the
+    //      whole tree reachable even after every goto-father is fixed (the
+    //      blk15->16 case on 0x49D804, blk7->8 on 0x352CD4). If that block
+    //      installs a resolvable single state, convert its fallthrough into an
+    //      explicit `goto <real target>` (change_1way_block_successor appends
+    //      the goto; no renumber, no removal), so the entry loses the edge. ----
+    {
+      int fp = entry_fallthrough_pred(mba, *di);
+      if ( fp >= 0 )
+      {
+        mblock_t *pf = mba->get_mblock(fp);
+        uint64_t K = 0;
+        if ( father_single_state(mba, pf, *di, &K) )
+        {
+          int real = target_for_state(mba, *di, K, fp);
+          if ( real >= 0 )
+          {
+            mblock_t *tb = mba->get_mblock(real);
+            if ( !tb->predset.has(fp)
+              && change_1way_block_successor(pf, real) )
+            {
+              ++changes;
+              DLOG(L_DEBUG, "STEP4: fallthrough pred %d -> state 0x%llx -> %d",
+                   fp, (unsigned long long)K, real);
+              for ( minsn_t *ins = pf->head; ins != nullptr; ins = ins->next )
+                if ( is_emu_const_carrier_store(*di, ins) )
+                  erasures.emplace_back(fp, ins);
+            }
+          }
+        }
+      }
+      step_verify_emu(mba, "fallthrough");
+    }
 
     // ---- PHASE B: conditional (jcnd) fathers whose two edges install two
     //      distinct states. Handles the in-block lowered-select case that
@@ -487,56 +723,63 @@ int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
         if ( all_preds_dispatcher(mba, *di, blk) )
           continue;
 
-        // Ambiguous (known candidate set) OR a MERGE point (>=2 preds where
-        // single-state resolution failed and the tracker cannot even enumerate
-        // candidates, because two case-paths converge here before the goto).
-        // Both are fixed by giving each incoming history a private copy so the
-        // resolution point is pushed back toward the single-history case body
-        // (D-810 ensure_child_has_an_unconditional_father). Bounded by the
-        // outer pass count + MAX_DUP_PASSES so a truly unresolvable father just
-        // stops duplicating and is left as residue.
+        // A MERGE point (>=2 preds where single-state resolution failed because
+        // two case-paths converge here before the goto). Give each incoming
+        // history a private copy so the resolution point is pushed back toward
+        // the single-history case body (D-810 ensure_child_has_an_unconditional_
+        // father). Bounded by the outer pass count + MAX_DUP_PASSES.
         if ( blk->npred() < 2 )
           continue;                      // need >=2 preds to split histories
-        std::vector<uint64_t> vals = possible_state_values(mba, blk, *di);
-        if ( vals.size() >= 2 )
-        {
-          // Known ambiguous: only split when every candidate maps to a target,
-          // otherwise duplication cannot finish and would only bloat the graph.
-          bool all_mapped = true;
-          for ( uint64_t v : vals )
-            if ( target_for_state(mba, *di, v, i) < 0 )
-            {
-              all_mapped = false;
-              break;
-            }
-          if ( !all_mapped )
-            continue;
-        }
-        else if ( !vals.empty() )
-        {
-          // Exactly one candidate but single-state resolution failed: not a
-          // clean merge; leave it rather than risk a wrong split.
-          continue;
-        }
-        // else vals.empty() && npred>=2: a merge point -> duplicate to expose
-        // the per-predecessor histories; each copy resolves in a later pass.
 
-        // Give the father a private copy per predecessor beyond the first, so
-        // each incoming history reaches its own single-state block. The clone
-        // is appended at qty-1 and the trailing sink shifts up.
+        // STEP-3 HARDENING (monotonic duplication). Resolve EACH predecessor's
+        // own history first; split off ONLY the predecessors that resolve to a
+        // single mapped state. A predecessor whose history is not determinable
+        // is LEFT merged at `blk` (which keeps pointing at the dispatcher: a
+        // correct residual edge, never a wrong one). So duplication can only add
+        // correct edges and can never bloat the graph with copies that will not
+        // resolve - satisfying the correctness-first invariant that previously
+        // kept the whole phase behind UNSLOP_DUP.
         std::vector<int> preds;
+        std::vector<int> res_target;     // resolved target per pred, or -1
         for ( int j = 0; j < blk->npred(); ++j )
-          preds.push_back(blk->pred(j));
-
-        bool duplicated = false;
-        for ( size_t pi = 1; pi < preds.size(); ++pi )
         {
+          int p = blk->pred(j);
+          preds.push_back(p);
+          std::vector<uint64_t> pv = state_values_via_pred(mba, blk, p, *di);
+          int tgt = (pv.size() == 1) ? target_for_state(mba, *di, pv[0], i) : -1;
+          res_target.push_back(tgt);
+        }
+        int n_res = 0;
+        for ( int t : res_target )
+          if ( t >= 0 )
+            ++n_res;
+        if ( n_res == 0 )
+          continue;                      // no history resolves -> leave as residue
+
+        // When every predecessor resolves, keep the first one attached to the
+        // original `blk` (PHASE A rewrites it next pass) and split the rest;
+        // otherwise split every resolvable predecessor so `blk` is left owning
+        // only the unresolvable residue.
+        bool keep_one = (n_res == int(preds.size()));
+        bool kept = false;
+        bool duplicated = false;
+        for ( size_t pi = 0; pi < preds.size() && dup_passes < MAX_DUP_PASSES; ++pi )
+        {
+          if ( res_target[pi] < 0 )
+            continue;                    // history not determinable -> leave merged
+          if ( keep_one && !kept )
+          {
+            kept = true;                 // this pred stays on `blk`
+            continue;
+          }
           int at = mba->qty - 1;         // copy_block insertion serial
           mblock_t *dup = duplicate_block(blk);
           if ( dup == nullptr )
             break;
           di_shift_up_from(di, at);
-          // Rewire predecessor `preds[pi]` from `blk` to the fresh copy.
+          // Rewire predecessor `preds[pi]` from `blk` to the fresh copy. Only
+          // the trailing sink shifted (copy appended at qty-1), so serials below
+          // it are unchanged; guard anyway.
           int p = preds[pi] >= at ? preds[pi] + 1 : preds[pi];
           int blk_serial = i >= at ? i + 1 : i;
           mblock_t *pf = mba->get_mblock(p);
@@ -548,8 +791,8 @@ int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
         if ( duplicated )
         {
           ++changes;
-          DLOG(L_DEBUG, "C: duplicated ambiguous father %d (%d candidates)",
-               i, int(vals.size()));
+          DLOG(L_DEBUG, "C: duplicated merge father %d (%d/%d preds resolvable)",
+               i, n_res, int(preds.size()));
         }
       }
       step_verify_emu(mba, "duplicate");

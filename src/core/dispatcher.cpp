@@ -1110,7 +1110,7 @@ static bool detect_emulated_dispatcher(mba_t *mba, DispatcherInfo *out,
       // deflattened. It is additive - only tried when detect_selector_transform
       // did not already match - and each rewrite is strict-verified. Opt out
       // with UNSLOP_REGBST=0.
-      rb = (qgetenv("UNSLOP_REGBST", &ev) && atoi(ev.c_str()) != 0) ? 1 : 0;
+      rb = (qgetenv("UNSLOP_REGBST", &ev) && atoi(ev.c_str()) == 0) ? 0 : 1;
     }
     regbst_ok = (rb != 0);
   }
@@ -1334,7 +1334,7 @@ static bool detect_jump_table(mba_t *mba, DispatcherInfo *out,
         qstring ev;
         // Default ON (see the register-BST note above): bridge a jump-table CFF
         // to the crash-safe emulated driver. Opt out with UNSLOP_REGBST=0.
-        rb2 = (qgetenv("UNSLOP_REGBST", &ev) && atoi(ev.c_str()) != 0) ? 1 : 0;
+        rb2 = (qgetenv("UNSLOP_REGBST", &ev) && atoi(ev.c_str()) == 0) ? 0 : 1;
       }
       if ( rb2 != 0 && installs >= 2 )
       {
