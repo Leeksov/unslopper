@@ -463,10 +463,11 @@ static int try_mba_identity(minsn_t *ins)
         }
       }
 
-      // a - (~b - 1)  =>  a + b   (also a - (~b + (-1)))
+      // a - (~b + 1) => a + b (since ~b+1 == -b).
+      // The former ~b-1 / ~b+(-1) pattern was wrong by two modulo 2^N.
       {
         const minsn_t *rsub = as_insn(&ins->r, m_sub);
-        if ( rsub != nullptr && is_const_val(&rsub->r, 1) )
+        if ( rsub != nullptr && is_const_val(&rsub->r, -1) )
         {
           const mop_t *bb = bnot_operand(&rsub->l);
           if ( bb != nullptr )
@@ -480,7 +481,7 @@ static int try_mba_identity(minsn_t *ins)
         {
           const minsn_t *nb = nullptr;
           const mop_t *oth = nullptr;
-          if ( split_one(radd, m_bnot, &nb, &oth) && is_const_val(oth, -1) )
+          if ( split_one(radd, m_bnot, &nb, &oth) && is_const_val(oth, 1) )
           {
             rewrite_binop(ins, m_add, ins->l, nb->l);
             return 1;

@@ -60,11 +60,13 @@ opaqued function is both deflattened and folded, under a single verify.
 
 ### Negative caching
 
-Three sets on the optimizer keep re-decompiles cheap and safe:
+Three sets deduplicate callbacks within one generated microcode array.
+`hxe_microcode` clears entries for that function on each new decompilation,
+including after byte/type edits or `mark_cfunc_dirty()`:
 
 - `done` — `(func,maturity)` already processed (dedup).
 - `not_cff` — no dispatcher / rejected by the pre-filter (skip instantly).
-- `skip` — produced microcode that failed `verify()` (never re-attempted).
+- `skip` — produced microcode that failed `verify()` (not retried on that array).
 
 ---
 

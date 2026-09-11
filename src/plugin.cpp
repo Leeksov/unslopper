@@ -34,10 +34,15 @@
 #include "opaque_mba.h"
 #include "fairplay_dispatch.h"
 #include "profile.h"
+#include "stack_jtbl.h"
+#include "ixguard_mba.h"
+#include "hash_predicates.h"
+#include "svc_flags.h"
 #include "anti_decompiler.h"
 #include "semantic_diffusion.h"
 #include "virtual_call.h"
 #include "svc_resolver.h"
+#include "verified_jump.h"
 
 namespace unslop {
 
@@ -76,14 +81,22 @@ struct UnslopperOptblock : public optblock_t
 {
   // Dedup is keyed by (entry_ea, maturity): the pipeline now runs once per
   // maturity level (GLBOPT1 and GLBOPT2), so a function may legitimately be
-  // processed at each level. A failure/rejection at one level does not bar the
-  // other.
+  // processed at each level. Entries belong to one generated microcode array,
+  // not the database lifetime: hxe_microcode clears them for every fresh
+  // decompilation, including after mark_cfunc_dirty() or a type change.
   typedef std::pair<ea_t, int> fkey_t;
   std::set<fkey_t> done;         // (func, maturity) already processed (dedup)
   std::set<fkey_t> skip;         // (func, maturity) that failed verification
   std::set<fkey_t> not_cff;      // FIX 6: no dispatcher / rejected by pre-filter
   std::set<ea_t>   svc_done;     // functions already syscall-annotated (once)
   bool active = true;
+  bool hash_snapshot = false;
+  struct Diagnostics {
+    StackJtblDiagnostics stack;
+    std::string hash_reason="not_attempted";
+    int mba=0,hash=0,hash_candidates=0,edges=0,errors=0,svc_flags=0;
+  };
+  std::map<ea_t,Diagnostics> diagnostics;
 
   // Statistics.
   int stat_deflattened = 0;     // functions with >=1 change
@@ -94,12 +107,27 @@ struct UnslopperOptblock : public optblock_t
 
   int run_pipeline(mba_t *mba, bool *definitely_not_cff);
 
+  void begin_decompilation(ea_t ea)
+  {
+    for ( auto *cache : { &done, &skip, &not_cff } )
+    {
+      auto first = cache->lower_bound(fkey_t(ea, 0));
+      auto last = first;
+      while ( last != cache->end() && last->first == ea )
+        ++last;
+      cache->erase(first, last);
+    }
+    svc_done.erase(ea);
+    diagnostics[ea]=Diagnostics{};
+  }
+
   void reset()
   {
     done.clear();
     skip.clear();
     not_cff.clear();
     svc_done.clear();
+    diagnostics.clear();
     stat_deflattened = 0;
     stat_changes = 0;
     stat_errors = 0;
@@ -117,6 +145,13 @@ int UnslopperOptblock::run_pipeline(mba_t *mba, bool *definitely_not_cff)
   // for return paths that only fail a profile refinement (those may still be
   // CFF and are worth re-attempting).
   *definitely_not_cff = false;
+
+  StackJtblDiagnostics stack_report;
+  int stack_changes = unflatten_stack_jtbl(mba,&stack_report);
+  if(mba->maturity==MMAT_GLBOPT1)
+    diagnostics[mba->entry_ea].stack=stack_report;
+  if ( stack_changes > 0 )
+    return stack_changes;
 
   // Too small to be a flattened function (lower guard).
   if ( mba->qty < 6 )
@@ -390,6 +425,13 @@ int idaapi UnslopperOptblock::func(mblock_t *blk)
   // residues), so it is safe to run unconditionally. Opt out with
   // UNSLOP_NO_OPAQUE=1. The single strict verify below covers these edits.
   int opaque_changes = 0;
+  int ixguard_mba_changes = simplify_ixguard_mba(mba);
+  auto &report=diagnostics[ea];
+  report.mba+=ixguard_mba_changes;
+  int hash_candidates=0;std::string hash_reason;
+  int hash_changes=simplify_hash_predicates(mba,hash_snapshot,&hash_candidates,&hash_reason);
+  report.hash+=hash_changes;report.hash_candidates+=hash_candidates;
+  if(hash_candidates || !report.hash_candidates)report.hash_reason=hash_reason;
   static int opq_on = -1;
   if ( opq_on < 0 )
   {
@@ -407,6 +449,8 @@ int idaapi UnslopperOptblock::func(mblock_t *blk)
     }
   }
 
+  opaque_changes += ixguard_mba_changes+hash_changes;
+
   int changes = 0;
   bool not_cff_result = false;
   try
@@ -418,14 +462,15 @@ int idaapi UnslopperOptblock::func(mblock_t *blk)
     // A profile / recovery step threw: leave the function untouched.
     DLOG(L_ERROR, "pipeline threw an exception");
     ++stat_errors;
+    ++report.errors;
     log_end_func();
     return 0;
   }
 
   if ( changes <= 0 && opaque_changes <= 0 )
   {
-    // FIX 6: if the pipeline rejected this as not-CFF (no dispatcher or the
-    // pre-filter fired), cache it so re-decompiles skip instantly.
+    // Cache a rejection for the remaining callbacks on this generated array.
+    // A new decompilation must reconsider it: types or bytes may have changed.
     if ( not_cff_result )
       not_cff.insert(key);
     log_end_func();
@@ -448,6 +493,7 @@ int idaapi UnslopperOptblock::func(mblock_t *blk)
     DLOG(L_ERROR, "verify FAILED after pipeline (function skipped)");
     skip.insert(key);
     ++stat_errors;
+    ++report.errors;
     log_end_func();
     return 0;
   }
@@ -456,6 +502,7 @@ int idaapi UnslopperOptblock::func(mblock_t *blk)
   if ( get_func_name(&fname, ea) <= 0 )
     fname.sprnt("%a", ea);
   stat_changes += changes;
+  report.edges+=changes;
   if ( changes > 0 )
   {
     ++stat_deflattened;
@@ -482,9 +529,36 @@ struct plugin_ctx_t : public plugmod_t
 {
   UnslopperOptblock optimizer;
   bool installed = false;
+  bool callback_installed = false;
+
+  static ssize_t idaapi on_hexrays_event(
+          void *ud, hexrays_event_t event, va_list va)
+  {
+    if ( event == hxe_microcode )
+    {
+      mba_t *mba = va_arg(va, mba_t *);
+      if ( mba != nullptr )
+      {
+        auto *ctx = static_cast<plugin_ctx_t *>(ud);
+        ctx->optimizer.begin_decompilation(mba->entry_ea);
+        if ( ctx->optimizer.active )
+          ctx->optimizer.diagnostics[mba->entry_ea].svc_flags=preserve_svc_carry(mba);
+        if ( ctx->optimizer.active )
+          restore_verified_jumps(mba);
+      }
+    }
+    return 0;
+  }
 
   plugin_ctx_t()
   {
+    callback_installed = install_hexrays_callback(on_hexrays_event, this);
+    if ( !callback_installed )
+    {
+      optimizer.active = false;
+      msg("[unslop] cannot install decompilation lifecycle callback\n");
+      return;
+    }
     install_optblock_handler(&optimizer);
     installed = true;
     msg("[unslop] installed - press F5 to decompile with deflattening\n");
@@ -494,6 +568,8 @@ struct plugin_ctx_t : public plugmod_t
   {
     if ( installed )
       remove_optblock_handler(&optimizer);
+    if ( callback_installed )
+      remove_hexrays_callback(on_hexrays_event, this);
     term_hexrays_plugin();
   }
 
@@ -538,6 +614,27 @@ bool idaapi plugin_ctx_t::run(size_t arg)
           optimizer.stat_errors);
       break;
 
+    case 4: // Structured per-function diagnostic summaries for this instance.
+      for(const auto &row:optimizer.diagnostics) {
+        const auto &d=row.second;
+        msg("[unslop-report] {\"ea\":\"0x%llx\",\"stack\":\"%s\",\"cases\":%d,\"contexts\":%d,\"mba\":%d,\"hash\":%d,\"hash_candidates\":%d,\"hash_reason\":\"%s\",\"edges\":%d,\"errors\":%d,\"svc_flags\":%d}\n",
+            (unsigned long long)row.first,d.stack.reason.c_str(),d.stack.cases,d.stack.contexts,
+            d.mba,d.hash,d.hash_candidates,d.hash_reason.c_str(),d.edges,d.errors,d.svc_flags);
+      }
+      break;
+    case 20: // Explicit analysis assumption; does not patch target data.
+      optimizer.hash_snapshot=true;
+      for(const auto &row:optimizer.diagnostics)
+        if(row.second.hash_candidates)mark_cfunc_dirty(row.first,false);
+      msg("[unslop] FNV FIXED-SEED SNAPSHOT enabled: conditional analysis view, not runtime immutability\n");
+      break;
+    case 21:
+      optimizer.hash_snapshot=false;
+      for(const auto &row:optimizer.diagnostics)
+        if(row.second.hash_candidates)mark_cfunc_dirty(row.first,false);
+      msg("[unslop] FNV fixed-seed snapshot disabled\n");
+      break;
+
     case 10: // FairPlay: resolve the VM dispatch handler table (one-shot)
       fairplay_resolve_vm_table();
       break;
@@ -564,7 +661,7 @@ bool idaapi plugin_ctx_t::run(size_t arg)
       }
       break;
   }
-  return false;
+  return true;
 }
 
 } // namespace unslop
@@ -589,7 +686,13 @@ static plugmod_t *idaapi init()
 
   const char *hxver = get_hexrays_version();
   msg("[unslop] Hex-Rays %s detected, Unslopper deflattener ready\n", hxver);
-  return new unslop::plugin_ctx_t;
+  auto *ctx = new unslop::plugin_ctx_t;
+  if ( !ctx->callback_installed )
+  {
+    delete ctx;
+    return nullptr;
+  }
+  return ctx;
 }
 
 //--------------------------------------------------------------------------

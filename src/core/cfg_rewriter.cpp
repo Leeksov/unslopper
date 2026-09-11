@@ -536,6 +536,7 @@ int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
     }
     if ( !emulated_will_fully_resolve(mba, *di, do_insertion) )
     {
+      dump_mba_to_file(mba, "unresolved_dispatcher");
       DLOG(L_INFO, "commit guard: dispatcher would not fully resolve; "
                    "leaving function flattened (set UNSLOP_NO_GUARD=1 to force)");
       return 0;

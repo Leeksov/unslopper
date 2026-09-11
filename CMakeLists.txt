@@ -1,13 +1,22 @@
 cmake_minimum_required(VERSION 3.25)
 
-# Standalone build: pull in the IDA SDK cmake helpers before project().
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../tools/idasdk/ida-sdk/src/cmake/idasdk_init.cmake OPTIONAL)
-if(NOT COMMAND find_package OR NOT DEFINED idasdk_DIR)
-    # Fall back to $ENV{IDASDK}
-    if(DEFINED ENV{IDASDK})
-        include($ENV{IDASDK}/cmake/idasdk_init.cmake)
-    endif()
+# Accept both SDK archive layouts, without depending on a moved SDK tree.
+set(UNSLOP_SDK_ROOT "$ENV{IDASDK}" CACHE PATH "IDA SDK root or src directory")
+if(NOT UNSLOP_SDK_ROOT)
+    set(UNSLOP_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../tools/idasdk/ida-sdk")
 endif()
+set(_unslop_sdk_init "")
+foreach(_suffix IN ITEMS cmake src/cmake)
+    if(EXISTS "${UNSLOP_SDK_ROOT}/${_suffix}/idasdk_init.cmake")
+        set(_unslop_sdk_init "${UNSLOP_SDK_ROOT}/${_suffix}/idasdk_init.cmake")
+        break()
+    endif()
+endforeach()
+if(NOT _unslop_sdk_init)
+    message(FATAL_ERROR "Set IDASDK or -DUNSLOP_SDK_ROOT to an IDA SDK with CMake support")
+endif()
+set(ENV{IDASDK} "${UNSLOP_SDK_ROOT}")
+include("${_unslop_sdk_init}")
 
 project(unslopper CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -32,12 +41,17 @@ ida_add_plugin(unslopper
         src/core/history_tracker.cpp
         src/core/block_dup.cpp
         src/core/cfg_rewriter.cpp
+        src/core/stack_jtbl.cpp
         # transformation passes
         src/passes/mba_simplify.cpp
+        src/passes/ixguard_mba.cpp
+        src/passes/hash_predicates.cpp
+        src/passes/svc_flags.cpp
         src/passes/opaque_mba.cpp
         src/passes/anti_decompiler.cpp
         src/passes/semantic_diffusion.cpp
         src/passes/virtual_call.cpp
+        src/passes/verified_jump.cpp
         src/passes/svc_resolver.cpp
         src/passes/fairplay_dispatch.cpp
         # protector profiles
@@ -46,6 +60,9 @@ ida_add_plugin(unslopper
         src/profiles/dexprotector.cpp
         src/profiles/mvg.cpp
 )
+
+# Keep the installable artifact with this build rather than inside the SDK.
+set_target_properties(unslopper PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # Flat includes ("foo.h") resolve regardless of which subdirectory a header
 # lives in, so translation units never need "../" path prefixes.
