@@ -51,6 +51,8 @@ ida_add_plugin(unslopper
         src/passes/anti_decompiler.cpp
         src/passes/semantic_diffusion.cpp
         src/passes/virtual_call.cpp
+        src/passes/arxan_patterns.cpp
+        src/passes/arxan_branches.cpp
         src/passes/verified_jump.cpp
         src/passes/svc_resolver.cpp
         src/passes/fairplay_dispatch.cpp

@@ -5,15 +5,14 @@ This test never runs SDK functions, imports, or integrity-failure callbacks.
 import hashlib,json,random,struct,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from arxan_analysis import MachO
-from apply_arxan_branches import validate
+from arxan_reference import MachO,validate_report
 from unicorn import Uc,UC_ARCH_ARM64,UC_MODE_ARM
 from unicorn import arm64_const as R
 
 
 def verify(binary,report_path,output):
     image=MachO(binary);report=json.loads(Path(report_path).read_text())
-    rows=validate(report,image,image.sha,image.base)
+    rows=validate_report(report,image)
     u=Uc(UC_ARCH_ARM64,UC_MODE_ARM)
     low=min(s[0] for s in image.segments)//0x1000*0x1000
     high=(max(s[0]+s[1] for s in image.segments)+0xfff)//0x1000*0x1000

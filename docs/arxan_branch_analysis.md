@@ -1,82 +1,97 @@
-# Checked Arxan-pattern branch import
+# Automatic C++ Arxan-pattern branch recovery
 
-This update adds address-independent discovery of three ARM64 branch patterns
-observed in NianticLabsPlugin and four TMX frameworks. It feeds the existing
-`verified_jump` microcode pass. It does not patch machine instructions or disable
-integrity checks, debugger checks, syscalls, or exception handlers.
+Arxan-pattern recovery now runs inside `unslopper.dylib` when a function is
+decompiled. No Python analysis/import step, comment marker, or user-added xref
+is required. Python under `tests/` provides an independent reference and test
+harnesses; it is not a runtime dependency of the plugin.
 
-## Pipeline
+## Native pipeline
 
-1. `tools/arxan_analysis.py` reads a thin, decrypted ARM64 Mach-O and derives
-   `__text`, segment permissions, and optional `LC_FUNCTION_STARTS` bounds.
-2. It recognizes exact local instruction families and records source bytes,
-   target, pattern, and any read-only literal needed by the proof.
-3. `tools/apply_arxan_branches.py` re-derives every match from the current IDB
-   before making changes. Its default operation is a read-only plan.
-4. Explicit import writes an `UNSLOPPER_VERIFIED_JUMP` comment and a matching
-   user jump xref. Existing Unslopper handling turns eligible generated
-   microcode indirect jumps into gotos before local optimization.
+- `src/passes/arxan_patterns.*` is an SDK-independent C++ matcher for exact ARM64
+  instruction patterns. It reads instructions through bounded callbacks and
+  does not contain sample-specific addresses.
+- `src/passes/arxan_branches.*` integrates the matcher with Hex-Rays. During
+  `hxe_flowchart_ea`, it adds proven target blocks to the mutable reachability
+  set, following existing CFG successors. It only includes blocks already
+  present in the flowchart and owned by the current function.
+- During `hxe_microcode` / `MMAT_GENERATED`, eligible indirect jumps become
+  direct microcode gotos. Subsequent Hex-Rays stages build and optimize the CFG.
+- The existing generic CFF/MBA passes run afterwards.
 
-The importer requires all instructions in the proof and its target to have the
-same current IDA function owner. It rejects known incoming edges into the middle
-of the proof from outside the slice. Existing comments and conflicting jump
-xrefs are preserved by skipping the site. Function-boundary repair is outside
-this update: a split function can prevent an otherwise valid local match from
-being imported.
+The early reachability step matters: many destinations exist in IDA's flowchart
+but are omitted from generated microcode because an unresolved BR made them
+appear unreachable. A GENERATED-only pass could recognize a branch yet have
+no destination block to use. The native implementation handles that prerequisite
+without changing machine bytes, comments, xrefs, or function boundaries.
 
-## Patterns and proof boundaries
+Set `UNSLOP_NO_ARXAN=1` before decompilation to disable both native stages for
+comparison. Plugin action `4` prints additional `[unslop-arxan]` diagnostics:
+`reachable_added`, `matched`, `changed`, `ownership_rejected`, `entry_rejected`,
+and `missing_block`, and `verified`. The native rewrite is strict-verified after
+preoptimization; a verification failure aborts that decompilation.
 
-- **Stored zero + address arithmetic:** matching 64-bit STR/LDR or STUR/LDUR
-  through SP/FP, followed by a constant ADR destination, optionally a read-only
-  signed relative word, and `(address XOR 0) + 2*(address AND 0)`. A pointer in X8
-  is accepted only when the immediately preceding ADD/SUB-immediate derives it
-  from SP or FP. General pointer stores are deliberately rejected.
-- **Multiply by one:** MOV X8,1; ADR X9,target; MUL X8,X9,X8; BR X8.
-- **Cancelling offset:** ADR X9,target; subtract X11; a known edge skips a decoy
-  subtraction; add X11; BR X9. The balanced SP adjustments remain intact.
+## Accepted patterns and gates
 
-These are local execution proofs, not a general Arxan signature or whole-program
-proof. Unknown indirect entry paths, asynchronous modification, and other
-protector variants are not established by a match. `__ETC,__PII` is reported as
-layout evidence, not treated as permission to rewrite arbitrary code.
+1. **Stored zero + address arithmetic:** matching 64-bit STR/LDR or STUR/LDUR
+   through SP/FP, followed by an ADR destination, optionally a read-only signed
+   relative word, and `(address XOR 0) + 2*(address AND 0)`. A pointer in X8 is
+   accepted only when an immediately preceding ADD/SUB-immediate derives it
+   from SP or FP. General pointer stores and mutable literal reads are rejected.
+2. **Multiply by one:** MOV X8,1; ADR X9,target; MUL X8,X9,X8; BR X8.
+3. **Cancelling offset:** ADR X9,target; subtract X11; a known direct edge skips
+   a decoy subtraction; add X11; BR X9. Balanced SP adjustments are preserved.
 
-The Mach-O reader translates VM addresses through segment file offsets. This
-matters for Niantic: `__PII` has VM address `0xcc0000`, but file offset `0xb98000`.
-The tools reject encrypted input, malformed command bounds, mutable literals,
-external targets, changed proof bytes, duplicate records, and edited targets.
+The proof slice and destination must have the same current IDA function owner.
+Known incoming code references from outside the slice into its middle reject
+the rewrite, as do conflicting user jump references. Destinations must be
+aligned and inside the executable segment. Unsupported cases remain unchanged.
 
-## Usage
+These are local instruction proofs, not vendor detection or whole-program
+proofs. Unknown indirect entry paths, asynchronous modification, fragmented
+function bounds, and other protector variants are not established by a match.
+`__ETC,__PII` is layout evidence, not permission to rewrite arbitrary code.
+Integrity checks, debugger checks, syscalls, and failure handlers are not disabled.
 
-Offline discovery needs only the Python standard library:
+## Validation on the three additional bet365 frameworks
 
-```sh
-python3 tools/arxan_analysis.py /path/to/NianticLabsPlugin --output report.json
-```
+A fresh C++ plugin was built against IDA SDK 9.4. Each sample was loaded from
+its original binary into an isolated IDA database. No Python annotation importer
+was called. Twenty eligible functions per library were selected at evenly spaced
+positions in the sorted function list, with a 12,000-byte size cap.
 
-Inside IDAPython, with this repository's `tools/` directory on `sys.path`:
+The harness compares disabled Unslopper, existing passes with native Arxan
+recovery disabled, and the full native pipeline. The table below isolates the
+new pass against existing passes:
 
-```python
-import json
-from apply_arxan_branches import apply
+| Sample | Functions tested | JUMPOUT: existing passes → native | Native edges recovered | Additional reachable blocks |
+|---|---:|---:|---:|---:|
+| TMXBehavioSec | 20 | 20 → 1 | 63 | 455 |
+| TMXProfilingConnections | 20 | 23 → 3 | 65 | 386 |
+| TMXAuthentication | 20 | 17 → 0 | 39 | 127 |
 
-with open('/path/to/report.json') as stream:
-    report = json.load(stream)
+All three runs completed without new decompilation failures and without changing
+machine bytes. These are representative function tests, not coverage of every
+function in those SDKs. Lower JUMPOUT counts measure recovery of visible flow;
+they do not establish complete semantic equivalence of the final pseudocode.
 
-plan = apply(report)  # Read-only
-print(len(plan['accepted']), len(plan['skipped']))
-result = apply(report, commit=True)  # Comments and user jump xrefs only
-```
+### Repeat decompilation and type inference
 
-Use an analysis copy. Enable Unslopper and decompile with F5. The existing
-microcode pass still checks that the destination is an actual block in the same
-function; an annotation alone does not guarantee a change in the pseudocode.
-Rebased IDBs require a report matching the current base; rebasing is not inferred.
+Exposing previously unreachable code can cause Hex-Rays to infer additional
+callee types. Initial tests observed `_QWORD*`/`__int64*` changes and expanded
+inferred prototypes between first and second exports. The harness therefore
+records `initial_native` and allows one native type-inference pass before
+comparing `native` with `repeated`. Those subsequent texts matched in all three
+libraries. TMXAuthentication also showed type propagation with the pre-existing
+passes alone (`core_repeat_matches=false`); this is preserved in the evidence.
+The plugin does not force prototypes or suppress these differences.
 
-## Sample results
+Full per-function metrics, plugin hashes and native diagnostics are in
+[evidence/arxan_native_summary.json](evidence/arxan_native_summary.json) and the
+three `*_arxan_native.json` files beside it.
 
-These counts are accepted local patterns, before IDA ownership/xref gates:
+## Matcher coverage and independent instruction checks
 
-| Sample | Stored zero | Cancelling offset | Multiply one | Total |
+| Sample | Zero-mask patterns | Cancelling offsets | Multiply one | Total local matches |
 |---|---:|---:|---:|---:|
 | NianticLabsPlugin, Pokemon GO 0.415.2 | 8,878 | 6,223 | 6,031 | 21,132 |
 | TMXProfiling | 943 | 737 | 708 | 2,388 |
@@ -84,40 +99,49 @@ These counts are accepted local patterns, before IDA ownership/xref gates:
 | TMXProfilingConnections | 156 | 123 | 127 | 406 |
 | TMXAuthentication | 201 | 152 | 149 | 502 |
 
-A broader syntactic scan counted 22,784 Niantic matches. The importer deliberately
-accepts fewer because it requires a stack-derived zero-store address and
-read-only literals. Broader pattern counts are not rewrite authorization.
+C++ discovery matched the independent Python reference exactly on Niantic and
+the three newly tested TMX frameworks. Original-versus-direct-branch ARM64
+execution matched for 63,396 Niantic comparisons and respectively 5,880, 1,218,
+and 1,506 comparisons on the three TMX libraries. Each local match is exercised
+with three initial register states; registers, SP and NZCV are compared.
+Niantic's new C++ F5 pipeline has not been exercised by this three-library run.
 
-Full sample hashes and counts: [arxan_samples.json](evidence/arxan_samples.json).
-No target binaries or full disassembly databases are included.
+Broader syntactic scans find more sites, because they also count general-pointer
+zero stores that this implementation deliberately does not treat as proofs.
+Full hashes are in [arxan_samples.json](evidence/arxan_samples.json). No target
+binaries or IDA databases are committed.
 
-## Validation
+## Reproducing tests
 
-- Twenty sample-independent positive/negative unit tests cover instruction
-  patterns, mutable literals, general-pointer stores, external destinations,
-  changed reports, competing xrefs, comments, function ownership, encryption,
-  and VM/file-offset differences.
-- Original versus direct-branch ARM64 execution matched for **all 21,132 Niantic
-  records**, three initial register states each: **63,396 comparisons**. This
-  checks registers, SP, and NZCV at the local destination, not whole functions.
-- On an analysis copy of the Niantic IDB, **6,112** records were eligible;
-  **15,020** were skipped because function ownership was missing or differed.
-- Three eligible functions were exercised with an existing local Unslopper
-  build. Repeat decompilation metrics matched, and machine bytes were unchanged.
-  At `0x69d8`, JUMPOUT count fell from 1 to 0. At `0x45e0`, lines fell from 62
-  to 58. At `0x6b58`, the selected annotation did not change these metrics.
-- This is a Python tooling change; it does not add or rebuild a C++ pass.
-
-Evidence: [local differential test](evidence/niantic_arxan_differential.json),
-[IDA annotation/decompilation test](evidence/niantic_arxan_annotations.json).
+The C++ matcher can be built and tested without an IDA SDK:
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_arxan_analysis.py' -v
-# Requires Unicorn:
-python3 tests/arxan_differential.py /path/to/binary report.json differential.json
-# IDA analysis-copy harness; pass a built Unslopper plugin as the final argument:
-idat -A -S"tests/arxan_annotations.py report.json ida-result.json /path/to/unslopper.dylib" copy.i64
+c++ -std=c++17 -Wall -Wextra -Werror -I src/passes \
+  tests/arxan_native_patterns.cpp src/passes/arxan_patterns.cpp \
+  -o build/arxan_native_patterns
+build/arxan_native_patterns
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
+Independent sample checks (the differential harness requires Unicorn):
+
+```sh
+python3 tests/arxan_reference.py /path/to/binary --output report.json
+python3 tests/arxan_differential.py /path/to/binary report.json differential.json
+python3 tests/arxan_native_parity.py build/arxan_native_patterns /path/to/binary parity.json
+```
+
+For the full F5 comparison, build the plugin using the repository's normal CMake
+instructions, use an isolated IDA user directory with no older Unslopper plugin,
+and run the harness against an analysis copy:
+
+```sh
+idat -A -S"tests/arxan_native_ida.py report.json native.json /path/to/unslopper.dylib 20" copy.i64
+```
+
+The harness writes metrics and local pseudocode snapshots next to `native.json`.
+Do not publish those snapshots when the target is proprietary. They are not
+needed to use the C++ plugin.
+
 Complete protector removal, automatic repair of fragmented IDBs, live application
-behavior, and removal of the integrity machinery are not claimed.
+behavior, and removal of integrity machinery are not claimed.

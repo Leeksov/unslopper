@@ -2,7 +2,7 @@
 
 The name is an attribution, not a vendor detector. __ETC,__PII is reported as
 layout evidence. A match proves a local edge given entry at the slice start;
-the IDA applier additionally checks incoming xrefs and function ownership.
+the C++ plugin additionally checks incoming xrefs and function ownership.
 """
 import argparse
 import bisect
@@ -164,7 +164,7 @@ def match_at(image, site):
                 0xcb0b0129, 0xd10023ff, 0x14000002, 0xcb0b0129, 0x8b0b0129, BR9
             ) and word(site + 4) == 0x910023ff:
                 start, target, pattern = candidate, destination, 'cancelled_address_offset'
-        if start is None or target % 4 or not image.text[0] <= target < image.text[1] or target == site:
+        if start is None or target % 4 or not image.text[0] <= target or target + 4 > image.text[1] or target == site:
             return None
         return dict(ea=hex(site), target=hex(target), pattern=pattern,
                     window=dict(ea=hex(start), bytes=image.read(start, site + 4 - start).hex()),
@@ -194,6 +194,21 @@ def analyze(image):
                 markers=[s for s in image.sections if s['name'] == '__PII'],
                 br_x8_x9_candidates=candidates, counts=counts, matched=len(records), records=records,
                 scope='Local instruction proofs only. IDA entry-xref and ownership checks required before use. No guard removal or whole-protector claim.')
+
+
+def validate_report(report, image):
+    if report.get('schema') != 1 or report.get('sha256') != image.sha or int(report['base'],16) != image.base:
+        raise ValueError('Report identity/base mismatch')
+    rows=[];seen=set()
+    for row in report['records']:
+        ea=int(row['ea'],16)
+        if ea in seen:raise ValueError('Duplicate report site')
+        seen.add(ea)
+        rebuilt=match_at(image,ea)
+        if rebuilt is None or any(row.get(k)!=rebuilt[k] for k in ('ea','target','pattern','window','reads')):
+            raise ValueError('Changed instruction proof')
+        rows.append(rebuilt)
+    return rows
 
 
 if __name__ == '__main__':

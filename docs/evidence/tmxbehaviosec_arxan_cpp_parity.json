@@ -1,0 +1,11 @@
+{
+  "sha256": "112f3c1c469ca254d22c6cd2607d99214284bc084bfbe7d59602b5ff3db45533",
+  "cpp_matches": 1960,
+  "python_matches": 1960,
+  "identical": true,
+  "counts": {
+    "multiply_one": 544,
+    "zero_mask_constant": 928,
+    "cancelled_address_offset": 488
+  }
+}
