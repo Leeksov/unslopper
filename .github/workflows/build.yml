@@ -40,7 +40,7 @@ jobs:
           - {platform: macos, arch: x64, runner: macos-15-intel}
           - {platform: macos, arch: arm64, runner: macos-15}
           - {platform: windows, arch: x64, runner: windows-2022}
-          - {platform: windows, arch: arm64, runner: windows-11-arm}
+          - {platform: windows, arch: arm64, runner: windows-11-arm, cmake_args: "-DCMAKE_TOOLCHAIN_FILE=.sdk/src/cmake/toolchains/arm-Windows.toolchain.cmake"}
           - {platform: linux, arch: x64, runner: ubuntu-24.04}
           - {platform: linux, arch: arm64, runner: ubuntu-24.04-arm}
     steps:
@@ -61,7 +61,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUNSLOP_SDK_ROOT=${{ github.workspace }}/.sdk
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUNSLOP_SDK_ROOT=${{ github.workspace }}/.sdk ${{ matrix.cmake_args }}
       - name: Build
         run: cmake --build build --parallel 4
       - name: Stage plugin
