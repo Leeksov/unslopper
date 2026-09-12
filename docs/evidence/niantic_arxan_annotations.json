@@ -1,0 +1,44 @@
+{
+  "sha256": "c053c5d5d1ece53de1e11e7c13ec9bf393df2f6e8832266d48f6d25090182b1a",
+  "eligible": 6112,
+  "skipped": {
+    "different_or_missing_function": 15020
+  },
+  "annotations": 3,
+  "baseline": {
+    "0x45e0": {
+      "lines": 62,
+      "jumpouts": 0,
+      "asm_blocks": 0
+    },
+    "0x69d8": {
+      "lines": 11,
+      "jumpouts": 1,
+      "asm_blocks": 0
+    },
+    "0x6b58": {
+      "lines": 115,
+      "jumpouts": 1,
+      "asm_blocks": 0
+    }
+  },
+  "after": {
+    "0x45e0": {
+      "lines": 58,
+      "jumpouts": 0,
+      "asm_blocks": 0
+    },
+    "0x69d8": {
+      "lines": 13,
+      "jumpouts": 0,
+      "asm_blocks": 0
+    },
+    "0x6b58": {
+      "lines": 115,
+      "jumpouts": 1,
+      "asm_blocks": 0
+    }
+  },
+  "repeat_matches": true,
+  "machine_bytes_unchanged": true
+}
