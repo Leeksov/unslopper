@@ -19,6 +19,7 @@ function regardless of flattening.
 | Family | Obfuscation | Unslopper handling | Status |
 |---|---|---|---|
 | **OLLVM / Hikari** | magic-constant CFF (scramble32 states) | `profiles/ollvm` + core | ✅ verified |
+| **BShield** | 64-bit stack-state equality-chain CFF | `core/stack_jtbl` context planner | [verified on six CFF functions](docs/bshield_cff.md) |
 | **Promon SHIELD** | BST CFF + register pools + opaque predicates | `profiles/promon` | ✅ verified |
 | **DexProtector** | XOR+ADD state-transform CFF | `profiles/dexprotector` | ✅ verified |
 | **Guardsquare (MVG / iXGuard / BitGuard)** | jump-table CFF + X16 syscalls + BLR dispatch | `profiles/mvg` + appliers | ✅ verified |

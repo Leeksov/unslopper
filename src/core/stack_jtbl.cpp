@@ -336,6 +336,7 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
     return reject("input_block_limit");
   int disp = -1;
   Var carrier;
+  std::set<int> equality_dispatchers;
   std::map<uint64_t, int> cases;
   for (int b = 1; b < original - 1; ++b)
   {
@@ -375,13 +376,57 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
     carrier = *v;
   }
   if (disp < 0)
-    return reject("no_stack_jump_table");
+  {
+    // BShield/OLLVM also lowers a 64-bit stack state to a chain of equality
+    // branches. Reuse the exact-width context planner, never the 32-bit BST
+    // arithmetic. Only pure compare blocks may become dispatch boundaries.
+    std::map<Var, std::vector<int>> groups;
+    for (int b = 1; b < original - 1; ++b)
+    {
+      auto blk = mba->get_mblock(b);
+      auto t = blk->tail;
+      if (!t || (t->opcode != m_jz && t->opcode != m_jnz)
+          || t->r.t != mop_n || t->d.t != mop_b || blk->nsucc() != 2)
+        continue;
+      auto v = variable(t->l);
+      if (!v || v->kind != 2 || (v->size != 4 && v->size != 8)
+          || t->r.size != v->size)
+        continue;
+      bool clean = true;
+      for (auto i = blk->head; i && i != t; i = i->next)
+        if (i->opcode != m_nop) clean = false;
+      if (clean) groups[*v].push_back(b);
+    }
+    for (const auto &group : groups)
+    {
+      std::set<uint64_t> constants;
+      int head = -1;
+      for (int b : group.second)
+      {
+        auto blk = mba->get_mblock(b);
+        uint64_t k = blk->tail->r.nnn->value & mask(group.first.size);
+        constants.insert(k);
+        if (blk->npred() >= 3) head = b;
+      }
+      if (head < 0 || constants.size() < 4) continue;
+      if (disp >= 0) return reject("multiple_equality_carriers");
+      disp = head;
+      carrier = group.first;
+      equality_dispatchers.insert(group.second.begin(), group.second.end());
+      for (auto k : constants) cases[k] = -1; // inventory only; branch locally
+    }
+    if (disp < 0) return reject("no_stack_dispatcher");
+  }
+  auto is_dispatch = [&](int b) {
+    return equality_dispatchers.empty() ? b == disp : equality_dispatchers.count(b) != 0;
+  };
   if(diagnostics)diagnostics->cases=int(cases.size());
   // Demand only the scalar data feeding the next dispatcher, not application
   // predicates/counters. This merges payload contexts instead of unrolling
   // real loops. The dispatcher is a liveness boundary.
   std::vector<Vars> need(original);
-  need[disp].insert(carrier);
+  for (int b = 1; b < original - 1; ++b)
+    if (is_dispatch(b)) need[b].insert(carrier);
   bool changed = true;
   int iter = 0;
   for (; changed && iter < original * 2; ++iter)
@@ -389,7 +434,7 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
     changed = false;
     for (int b = original - 2; b > 0; --b)
     {
-      if (b == disp)
+      if (is_dispatch(b))
         continue;
       Vars n;
       auto blk = mba->get_mblock(b);
@@ -426,7 +471,7 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
       return old->second;
     int id = int(nodes.size());
     seen.emplace(key, id);
-    nodes.push_back({key, {}, block == disp});
+    nodes.push_back({key, {}, is_dispatch(block)});
     return id;
   };
   if (mba->get_mblock(0)->nsucc() != 1 || mba->get_mblock(0)->succ(0) != 1)
@@ -445,10 +490,10 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
     Env env = nodes[i].key.env;
     run_body(blk, env);
     std::vector<int> succ;
-    if (b == disp)
+    if (is_dispatch(b))
     {
       auto v = env.find(carrier);
-      if (v == env.end() || !cases.count(v->second))
+      if (v == env.end() || (equality_dispatchers.empty() && !cases.count(v->second)))
       {
         DLOG(L_INFO, "stack-jtbl: unresolved selector in context %d (%d nodes)", int(i),
              int(nodes.size()));
@@ -457,7 +502,15 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
                int(nodes[k].key.env.size()));
         return reject("unknown_or_unmapped_selector");
       }
-      succ.push_back(intern(cases.at(v->second), env));
+      if (equality_dispatchers.empty())
+        succ.push_back(intern(cases.at(v->second), env));
+      else
+      {
+        auto t = blk->tail;
+        bool eq = v->second == (t->r.nnn->value & mask(carrier.size));
+        bool taken = t->opcode == m_jz ? eq : !eq;
+        succ.push_back(intern(taken ? t->d.b : b + 1, env));
+      }
       ++dispatches;
     }
     else if (blk->nsucc() == 2)
@@ -519,7 +572,7 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
       }
       else if (n.succ.size() == 1)
       {
-        bool replace = c->tail && (c->tail->opcode == m_jtbl || c->tail->opcode == m_goto);
+        bool replace = c->tail && (c->tail->opcode == m_jtbl || c->tail->opcode == m_goto || n.dispatch);
         goto_only(c, serial(n.succ[0]), replace);
       }
       c->mark_lists_dirty();

@@ -3,7 +3,7 @@
 #include <string>
 namespace unslop
 {
-// Bounded, all-or-nothing constant-context specialization of stack CFF.
+// Bounded, all-or-nothing specialization of stack jump-table/equality CFF.
 struct StackJtblDiagnostics {
   std::string reason="not_attempted";
   int cases=0,contexts=0;
