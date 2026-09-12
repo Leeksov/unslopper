@@ -1,0 +1,107 @@
+name: Build plugin
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install capstone unicorn z3-solver
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+  build:
+    name: ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: macos, arch: x64, runner: macos-15-intel}
+          - {platform: macos, arch: arm64, runner: macos-15}
+          - {platform: windows, arch: x64, runner: windows-2022}
+          - {platform: windows, arch: arm64, runner: windows-11-arm}
+          - {platform: linux, arch: x64, runner: ubuntu-24.04}
+          - {platform: linux, arch: arm64, runner: ubuntu-24.04-arm}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout public IDA SDK 9.4
+        uses: actions/checkout@v4
+        with:
+          repository: HexRaysSA/ida-sdk
+          ref: 2a9143f2f4abd7f54fe20d1e40fb68391d19c4cb
+          path: .sdk
+          persist-credentials: false
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install macOS build tools
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUNSLOP_SDK_ROOT=${{ github.workspace }}/.sdk
+      - name: Build
+        run: cmake --build build --parallel 4
+      - name: Stage plugin
+        run: cmake --install build --prefix package
+      - name: Package
+        shell: bash
+        env:
+          PACKAGE_NAME: unslopper-ida94-${{ matrix.platform }}-${{ matrix.arch }}
+        run: |
+          cp README.md package/
+          printf 'Commit: %s\nSDK: %s\nHost: %s/%s\n' "$GITHUB_SHA" '2a9143f2f4abd7f54fe20d1e40fb68391d19c4cb' "$RUNNER_OS" "$RUNNER_ARCH" > package/BUILD.txt
+          cmake -E tar cf "$PACKAGE_NAME.zip" --format=zip -- package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unslopper-ida94-${{ matrix.platform }}-${{ matrix.arch }}
+          path: unslopper-ida94-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: unslopper-ida94-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum *.zip > SHA256SUMS.txt
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" ./*.zip SHA256SUMS.txt --clobber

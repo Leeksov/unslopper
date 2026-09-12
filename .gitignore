@@ -33,3 +33,11 @@
 
 # Generated per-binary evidence sidecars
 /evidence/
+
+# CI SDK checkout and packaged builds
+/.sdk/
+/package/
+/unslopper-ida94-*.zip
+*.dll
+*.pdb
+*.lib
