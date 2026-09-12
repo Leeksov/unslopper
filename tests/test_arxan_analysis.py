@@ -9,8 +9,7 @@ import sys
 import tempfile
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-import arxan_analysis as m
-import apply_arxan_branches as applier
+import arxan_reference as m
 
 
 def adr(reg, at, target):
@@ -97,36 +96,15 @@ class Patterns(unittest.TestCase):
         self.assertIsNone(m.analyze(image)['records'][0]['canonical_function'])
 
 
-class ImportGates(unittest.TestCase):
-    def setUp(self):
-        self.image = multiply()
-        self.report = m.analyze(self.image)
-        self.rows = applier.validate(self.report, self.image, self.image.sha, self.image.base)
-    def plan(self, **options):
-        args = dict(function_owner=lambda a: 0x1000, incoming=lambda a: [a - 4], get_comment=lambda a: '', outgoing=lambda a: [])
-        args.update(options)
-        return applier.plan(self.rows, **args)
-    def test_accepts_local_edge(self):
-        self.assertEqual(len(self.plan()['accepted']), 1)
-    def test_rejects_edited_target(self):
-        report = copy.deepcopy(self.report); report['records'][0]['target'] = '0x1000'
-        with self.assertRaises(ValueError): applier.validate(report, self.image, self.image.sha, self.image.base)
-    def test_rejects_changed_window(self):
-        self.image.data = bytes(4) + self.image.data[4:]
-        with self.assertRaises(ValueError): applier.validate(self.report, self.image, self.image.sha, self.image.base)
-    def test_rejects_identity_change(self):
-        with self.assertRaises(ValueError): applier.validate(self.report, self.image, 'other', self.image.base)
-    def test_rejects_middle_entry(self):
-        self.assertEqual(self.plan(incoming=lambda a: [0x999])['skipped'][0]['reason'], 'unexpected_entry_into_proof')
-    def test_preserves_comment(self):
-        self.assertEqual(self.plan(get_comment=lambda a: 'analyst note')['skipped'][0]['reason'], 'existing_comment')
-    def test_rejects_other_function(self):
-        self.assertEqual(self.plan(function_owner=lambda a: a)['skipped'][0]['reason'], 'different_or_missing_function')
-    def test_rejects_conflicting_edge(self):
-        self.assertEqual(self.plan(outgoing=lambda a: [0x1004])['skipped'][0]['reason'], 'conflicting_jump_xref')
-    def test_rejects_duplicate_record(self):
-        self.report['records'] *= 2
-        with self.assertRaises(ValueError): applier.validate(self.report, self.image, self.image.sha, self.image.base)
+class ReportValidation(unittest.TestCase):
+    def test_rejects_tampered_proof(self):
+        image=multiply();report=m.analyze(image)
+        self.assertEqual(len(m.validate_report(report,image)),1)
+        report['records'][0]['target']='0x1000'
+        with self.assertRaises(ValueError):m.validate_report(report,image)
+    def test_rejects_duplicate_site(self):
+        image=multiply();report=m.analyze(image);report['records']*=2
+        with self.assertRaises(ValueError):m.validate_report(report,image)
 
 
 class MachOParsing(unittest.TestCase):

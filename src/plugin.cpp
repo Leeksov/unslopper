@@ -43,6 +43,7 @@
 #include "virtual_call.h"
 #include "svc_resolver.h"
 #include "verified_jump.h"
+#include "arxan_branches.h"
 
 namespace unslop {
 
@@ -93,6 +94,7 @@ struct UnslopperOptblock : public optblock_t
   bool hash_snapshot = false;
   struct Diagnostics {
     StackJtblDiagnostics stack;
+    ArxanDiagnostics arxan;
     std::string hash_reason="not_attempted";
     int mba=0,hash=0,hash_candidates=0,edges=0,errors=0,svc_flags=0;
   };
@@ -530,10 +532,41 @@ struct plugin_ctx_t : public plugmod_t
   UnslopperOptblock optimizer;
   bool installed = false;
   bool callback_installed = false;
+  std::map<ea_t,int> arxan_pending;
 
   static ssize_t idaapi on_hexrays_event(
           void *ud, hexrays_event_t event, va_list va)
   {
+    if ( event == hxe_flowchart_ea )
+    {
+      const auto *fc = va_arg(va, const qflow_chart_ea_t *);
+      mba_t *mba = va_arg(va, mba_t *);
+      bitset_t *reachable = va_arg(va, bitset_t *);
+      auto *ctx = static_cast<plugin_ctx_t *>(ud);
+      if ( mba != nullptr )
+        ctx->arxan_pending[mba->entry_ea] = ctx->optimizer.active
+          ? expand_arxan_reachability(fc, mba, reachable) : 0;
+    }
+    if ( event == hxe_preoptimized )
+    {
+      mba_t *mba = va_arg(va, mba_t *);
+      auto *ctx = static_cast<plugin_ctx_t *>(ud);
+      if ( mba != nullptr && ctx->optimizer.active )
+      {
+        auto it = ctx->optimizer.diagnostics.find(mba->entry_ea);
+        if ( it != ctx->optimizer.diagnostics.end() && it->second.arxan.changed > 0 )
+        {
+          try { mba->verify(true); it->second.arxan.verified = 1; }
+          catch ( ... )
+          {
+            ++it->second.errors;
+            ++ctx->optimizer.stat_errors;
+            msg("[unslop] Arxan microcode verification failed at %a\n", mba->entry_ea);
+            return MERR_BADBLK;
+          }
+        }
+      }
+    }
     if ( event == hxe_microcode )
     {
       mba_t *mba = va_arg(va, mba_t *);
@@ -541,10 +574,15 @@ struct plugin_ctx_t : public plugmod_t
       {
         auto *ctx = static_cast<plugin_ctx_t *>(ud);
         ctx->optimizer.begin_decompilation(mba->entry_ea);
+        ctx->optimizer.diagnostics[mba->entry_ea].arxan.reachable_added = ctx->arxan_pending[mba->entry_ea];
+        ctx->arxan_pending.erase(mba->entry_ea);
         if ( ctx->optimizer.active )
           ctx->optimizer.diagnostics[mba->entry_ea].svc_flags=preserve_svc_carry(mba);
         if ( ctx->optimizer.active )
+        {
+          restore_arxan_branches(mba, &ctx->optimizer.diagnostics[mba->entry_ea].arxan);
           restore_verified_jumps(mba);
+        }
       }
     }
     return 0;
@@ -620,6 +658,9 @@ bool idaapi plugin_ctx_t::run(size_t arg)
         msg("[unslop-report] {\"ea\":\"0x%llx\",\"stack\":\"%s\",\"cases\":%d,\"contexts\":%d,\"mba\":%d,\"hash\":%d,\"hash_candidates\":%d,\"hash_reason\":\"%s\",\"edges\":%d,\"errors\":%d,\"svc_flags\":%d}\n",
             (unsigned long long)row.first,d.stack.reason.c_str(),d.stack.cases,d.stack.contexts,
             d.mba,d.hash,d.hash_candidates,d.hash_reason.c_str(),d.edges,d.errors,d.svc_flags);
+        msg("[unslop-arxan] {\"ea\":\"0x%llx\",\"verified\":%d,\"reachable_added\":%d,\"matched\":%d,\"changed\":%d,\"ownership_rejected\":%d,\"entry_rejected\":%d,\"missing_block\":%d}\n",
+            (unsigned long long)row.first,d.arxan.verified,d.arxan.reachable_added,d.arxan.matched,d.arxan.changed,
+            d.arxan.ownership_rejected,d.arxan.entry_rejected,d.arxan.missing_block);
       }
       break;
     case 20: // Explicit analysis assumption; does not patch target data.

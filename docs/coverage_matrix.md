@@ -12,9 +12,9 @@
 | **FairPlay `makeOpaque` (S-box/MBA/affine/opaque)** | **opaque_mba.cpp** | **done — verified on fairplayd.H2 (0 INTERR, _main 59→16)** |
 | **FairPlay VM dispatch LUT (52,614 slots)** | **fairplay_dispatch.cpp (run arg 10)** | **done — 52,466 resolved / 44,700 unique, matches inventory** |
 | **Arxan/branding-stripped MBA branch obf** | **mba_simplify.cpp + opaque_mba.cpp** | **core covered ((a^b)+2(a&b)→a+b); verifying on NianticLabsPlugin** |
-| Arxan constant-target BR import | tools/arxan_analysis.py + checked importer + verified_jump | [21,132 local Niantic proofs; 6,112 IDA-eligible edges](arxan_branch_analysis.md) |
+| Arxan constant-target BR + reachability | C++ passes/arxan_branches + arxan_patterns | [60 TMX functions tested; JUMPOUT 60→4 versus existing passes](arxan_branch_analysis.md) |
 | Arxan direct syscalls (X16, SVC #0x80) | svc_resolver.cpp (same as MVG) | reuse — same pattern |
-| Arxan BRK #1 poison traps / __PII integrity manifest | annotation (planned) | annotation, not deobf — pending IDB verify |
+| Arxan BRK #1 traps / __PII section | annotation (planned) | annotation, not deobf — pending IDB verify |
 | OLLVM-22 BogusControlFlow | mba_simplify::eliminate_opaque_predicates | partial |
 | OLLVM-22 Anti-Decompiler (adec) | anti_decompiler.cpp | TODO |
 |   - indirectBr trampolines | resolve indirect jmp -> direct | TODO |

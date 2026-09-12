@@ -24,13 +24,11 @@ function regardless of flattening.
 | **DexProtector** | XOR+ADD state-transform CFF | `profiles/dexprotector` | ✅ verified |
 | **Guardsquare (MVG / iXGuard / BitGuard)** | jump-table CFF + X16 syscalls + BLR dispatch | `profiles/mvg` + appliers | ✅ verified |
 | **Apple FairPlay (`makeOpaque`)** | S-box chains, affine/MBA, opaque preds, VM LUT | `passes/opaque_mba` + `passes/fairplay_dispatch` | ✅ verified |
-| **Arxan-class (branding-stripped)** | MBA computed branches, integrity, direct syscalls | `passes/opaque_mba` + `passes/svc_resolver` | ⚠️ core covered¹ |
+| **Arxan-class** | MBA computed branches and hidden reachability | `passes/arxan_branches` + `passes/opaque_mba` | [C++ F5 recovery tested on three TMX libraries](docs/arxan_branch_analysis.md)¹ |
 
-¹ Arxan's dominant `(a^b)+2·(a&b)→a+b` branch transform is already folded by
-Hex-Rays 9.4; Unslopper's MBA layer clears the residual data-flow MBA (measured
-21→11 residual-MBA functions on a 120-function sample). See
-[coverage_matrix.md](docs/coverage_matrix.md) for the full breakdown and honest
-limits.
+¹ The native pass resolves exact, locally proven ARM64 branch patterns. It does
+not disable integrity or debugger checks, and does not claim full protector
+removal. Per-family limits remain in [coverage_matrix.md](docs/coverage_matrix.md).
 
 ---
 
@@ -122,19 +120,20 @@ Set `UNSLOP_NO_STACK_JTBL=1` to disable only this pass for diagnosis.
 
 | Variable | Effect |
 |---|---|
+| `UNSLOP_NO_ARXAN=1` | disable native Arxan reachability/branch recovery |
 | `UNSLOP_NO_OPAQUE=1` | disable the opaque/MBA layer (CFF recovery only) |
 | `UNSLOP_MAX_BLOCKS=N` | skip functions with more than N microcode blocks (default 4000) |
 | `UNSLOP_SVC=1` | enable the (opt-in, unreliable) microcode syscall fold |
 | `UNSLOP_FP_LUT_START/END=0x…` | override the FairPlay VM LUT bounds for other builds |
 | `UNSLOP_LOG=0..5`, `UNSLOP_LOG_FILE=…`, `UNSLOP_ONLY_EA=0x…` | diagnostics |
 
-### Checked Arxan-pattern import
+### Automatic C++ Arxan branch recovery
 
-`tools/arxan_analysis.py` discovers locally proven ARM64 branch patterns without
-sample-specific addresses. `tools/apply_arxan_branches.py` validates and imports
-eligible edges for the existing verified-jump pass; its default is read-only.
-Tested against NianticLabsPlugin and four TMX frameworks. See
-[algorithm, gates, and measured coverage](docs/arxan_branch_analysis.md).
+Arxan-pattern recovery runs directly in `unslopper.dylib` during flowchart and
+microcode generation. Press F5; no Python importer or annotation step is required.
+The pass resolves proven local branches and includes their existing target blocks
+in reachability without modifying IDB bytes or xrefs. Python is used only for
+independent testing. See [algorithm and measured TMX results](docs/arxan_branch_analysis.md).
 
 ### Offline appliers
 
@@ -205,8 +204,7 @@ one matching user code-jump xref in IDA. Unslopper restores the branch at the
 indirect tail call. The target must be an existing block in the same function.
 Missing, conflicting, malformed, or external annotations are ignored.
 
-The marker is an analyst assertion (or the output of the checked Arxan importer),
-not a proof inferred from pointer contents:
+The marker is an analyst assertion, not a proof inferred from pointer contents:
 do not apply it to a conditional/multitarget jump or a runtime-mutable target.
 This pass does not patch machine bytes. `tests/verified_jump.py` exercises
 positive/negative gates and repeated decompilation on the pinned MVG example.

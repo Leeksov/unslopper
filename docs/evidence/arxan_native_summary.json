@@ -1,0 +1,44 @@
+{
+  "plugin_sha256": "5b4815bb6e9f66d9780240254c9c13dab55d78cce8a358c5487b7b276ef2b3b7",
+  "samples": [
+    {
+      "sample": "TMXBehavioSec",
+      "sha256": "112f3c1c469ca254d22c6cd2607d99214284bc084bfbe7d59602b5ff3db45533",
+      "tested_functions": 20,
+      "core_jumpouts": 20,
+      "native_jumpouts": 1,
+      "cpp_edges": 63,
+      "reachable_blocks_added": 455,
+      "strict_verified_functions": 19,
+      "stable_after_type_warmup": true,
+      "new_failures": [],
+      "machine_bytes_unchanged": true
+    },
+    {
+      "sample": "TMXProfilingConnections",
+      "sha256": "dd1faa27cd4d22677a6ee6e028d6a49c1c10d0bb22e55ec27360d76eab9e29e7",
+      "tested_functions": 20,
+      "core_jumpouts": 23,
+      "native_jumpouts": 3,
+      "cpp_edges": 65,
+      "reachable_blocks_added": 386,
+      "strict_verified_functions": 19,
+      "stable_after_type_warmup": true,
+      "new_failures": [],
+      "machine_bytes_unchanged": true
+    },
+    {
+      "sample": "TMXAuthentication",
+      "sha256": "0997d45a1e3e344c13e7395330f7af0a00ce18cd5e0518c8f3b7c6f3231dd91d",
+      "tested_functions": 20,
+      "core_jumpouts": 17,
+      "native_jumpouts": 0,
+      "cpp_edges": 39,
+      "reachable_blocks_added": 127,
+      "strict_verified_functions": 19,
+      "stable_after_type_warmup": true,
+      "new_failures": [],
+      "machine_bytes_unchanged": true
+    }
+  ]
+}
