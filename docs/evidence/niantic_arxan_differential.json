@@ -1,0 +1,7 @@
+{
+  "sha256": "c053c5d5d1ece53de1e11e7c13ec9bf393df2f6e8832266d48f6d25090182b1a",
+  "records": 21132,
+  "comparisons": 63396,
+  "matched": true,
+  "scope": "Local instruction/reg/SP/NZCV equivalence at slice entry; no whole-program, alternate-entry, or live-device proof."
+}

@@ -1,0 +1,52 @@
+[
+  {
+    "sample": "TMXProfiling",
+    "sha256": "ba4ca36d31c84eed793845167062c6280ca5e4a1325259c66a1e27c1fe7b88a6",
+    "counts": {
+      "multiply_one": 708,
+      "zero_mask_constant": 943,
+      "cancelled_address_offset": 737
+    },
+    "matched": 2388
+  },
+  {
+    "sample": "TMXBehavioSec",
+    "sha256": "112f3c1c469ca254d22c6cd2607d99214284bc084bfbe7d59602b5ff3db45533",
+    "counts": {
+      "multiply_one": 544,
+      "zero_mask_constant": 928,
+      "cancelled_address_offset": 488
+    },
+    "matched": 1960
+  },
+  {
+    "sample": "TMXProfilingConnections",
+    "sha256": "dd1faa27cd4d22677a6ee6e028d6a49c1c10d0bb22e55ec27360d76eab9e29e7",
+    "counts": {
+      "cancelled_address_offset": 123,
+      "zero_mask_constant": 156,
+      "multiply_one": 127
+    },
+    "matched": 406
+  },
+  {
+    "sample": "TMXAuthentication",
+    "sha256": "0997d45a1e3e344c13e7395330f7af0a00ce18cd5e0518c8f3b7c6f3231dd91d",
+    "counts": {
+      "cancelled_address_offset": 152,
+      "multiply_one": 149,
+      "zero_mask_constant": 201
+    },
+    "matched": 502
+  },
+  {
+    "sample": "NianticLabsPlugin",
+    "sha256": "c053c5d5d1ece53de1e11e7c13ec9bf393df2f6e8832266d48f6d25090182b1a",
+    "counts": {
+      "zero_mask_constant": 8878,
+      "cancelled_address_offset": 6223,
+      "multiply_one": 6031
+    },
+    "matched": 21132
+  }
+]

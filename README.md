@@ -128,6 +128,14 @@ Set `UNSLOP_NO_STACK_JTBL=1` to disable only this pass for diagnosis.
 | `UNSLOP_FP_LUT_START/END=0x…` | override the FairPlay VM LUT bounds for other builds |
 | `UNSLOP_LOG=0..5`, `UNSLOP_LOG_FILE=…`, `UNSLOP_ONLY_EA=0x…` | diagnostics |
 
+### Checked Arxan-pattern import
+
+`tools/arxan_analysis.py` discovers locally proven ARM64 branch patterns without
+sample-specific addresses. `tools/apply_arxan_branches.py` validates and imports
+eligible edges for the existing verified-jump pass; its default is read-only.
+Tested against NianticLabsPlugin and four TMX frameworks. See
+[algorithm, gates, and measured coverage](docs/arxan_branch_analysis.md).
+
 ### Offline appliers
 
 Some annotations are more reliable at the disassembly level than in microcode
@@ -197,7 +205,8 @@ one matching user code-jump xref in IDA. Unslopper restores the branch at the
 indirect tail call. The target must be an existing block in the same function.
 Missing, conflicting, malformed, or external annotations are ignored.
 
-The marker is an analyst assertion, not a proof inferred from pointer contents:
+The marker is an analyst assertion (or the output of the checked Arxan importer),
+not a proof inferred from pointer contents:
 do not apply it to a conditional/multitarget jump or a runtime-mutable target.
 This pass does not patch machine bytes. `tests/verified_jump.py` exercises
 positive/negative gates and repeated decompilation on the pinned MVG example.
