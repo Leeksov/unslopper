@@ -64,7 +64,10 @@ ida_add_plugin(unslopper
 )
 
 # Keep the installable artifact with this build rather than inside the SDK.
-set_target_properties(unslopper PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(unslopper PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+install(TARGETS unslopper LIBRARY DESTINATION plugins RUNTIME DESTINATION plugins)
 
 # Flat includes ("foo.h") resolve regardless of which subdirectory a header
 # lives in, so translation units never need "../" path prefixes.
