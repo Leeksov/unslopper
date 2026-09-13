@@ -61,7 +61,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUNSLOP_SDK_ROOT=${{ github.workspace }}/.sdk ${{ matrix.cmake_args }}
+        shell: bash
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUNSLOP_SDK_ROOT="$GITHUB_WORKSPACE/.sdk" ${{ matrix.cmake_args }}
       - name: Build
         run: cmake --build build --parallel 4
       - name: Stage plugin
