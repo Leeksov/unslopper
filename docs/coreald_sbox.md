@@ -104,9 +104,9 @@ two table reads. The current native slice matcher cannot prove these under
 its straight-line register and pointer-slot conditions. It does not replace
 them based on visual similarity.
 
-This is a **partial deobfuscation**. Two authenticated transfer sites now have
-[audited on-disk candidates](coreald_pac.md); the pointer table is writable,
-so their runtime successors remain unresolved. The pass does not
-name the cipher, recover a license key, or decrypt an asset pack. Mapping a
-CoreALD export to the Background Assets `decryptChunk` call requires separate
-evidence from the runtime or correctly rebased chained fixups.
+This is a **partial deobfuscation**. A separate native-slice scanner has now
+[traced all 16 export transfers](coreald_pac.md), and a live process snapshot
+confirmed their table entries and PAC modifiers at that time. The table is
+writable, and a deeper branch on the chunk path still depends on caller
+context. Neither pass names the cipher, recovers a license key, or decrypts
+an asset pack.

@@ -1,0 +1,381 @@
+{
+  "sample_sha256": "247842d90546265eb6ced34fa18d83bc3d2eaaa3d4c1e79bb2cd3aab0e91f24f",
+  "scope": "iOS 26.0.1 CoreALD on-disk candidates; writable target table, runtime edges unverified",
+  "summary": {
+    "exports": 16,
+    "resolved": 16,
+    "unresolved": 0
+  },
+  "transfers": [
+    {
+      "entry": "0x285648228",
+      "export": "0x242510dfc",
+      "final_relation": {
+        "constant": "0x56",
+        "site": "0x242510fcc"
+      },
+      "index": "0x5701",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0x34da",
+      "on_disk_candidates": [
+        "0x24252f794"
+      ],
+      "raw": "0x8010d368c252f794",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0x45",
+        "site": "0x242510f18"
+      },
+      "site": "0x242510fe4",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648890",
+      "export": "0x242512cc0",
+      "final_relation": {
+        "constant": "0x43",
+        "site": "0x242512e90"
+      },
+      "index": "0x57ce",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0xcc65",
+      "on_disk_candidates": [
+        "0x24252e50c"
+      ],
+      "raw": "0x80133194c252e50c",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0x69",
+        "site": "0x242512df0"
+      },
+      "site": "0x242512ea8",
+      "table": "0x28561ca20"
+    },
+    {
+      "export": "0x24252fb5c",
+      "kind": "BRAA",
+      "levels": 1,
+      "on_disk_candidates": [
+        "0x24252fbb4",
+        "0x24252fbac"
+      ],
+      "site": "0x24252fba8"
+    },
+    {
+      "entry": "0x2856487c0",
+      "export": "0x24273b60c",
+      "final_relation": {
+        "constant": "0x45",
+        "site": "0x24273b7f4"
+      },
+      "index": "0x57b4",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0xb837",
+      "on_disk_candidates": [
+        "0x2428dfa3c"
+      ],
+      "raw": "0x8012e0dcc28dfa3c",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xfb",
+        "site": "0x24273b740"
+      },
+      "site": "0x24273b80c",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648228",
+      "export": "0x242747ef0",
+      "final_relation": {
+        "constant": "0xa0",
+        "site": "0x2427480c8"
+      },
+      "index": "0x5701",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0x34da",
+      "on_disk_candidates": [
+        "0x24252f794"
+      ],
+      "raw": "0x8010d368c252f794",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0x8d",
+        "site": "0x242748018"
+      },
+      "site": "0x2427480e0",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648890",
+      "export": "0x24277785c",
+      "final_relation": {
+        "constant": "0xe",
+        "site": "0x2427779f8"
+      },
+      "index": "0x57ce",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0xcc65",
+      "on_disk_candidates": [
+        "0x24252e50c"
+      ],
+      "raw": "0x80133194c252e50c",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xfb",
+        "site": "0x242777974"
+      },
+      "site": "0x242777a10",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648aa8",
+      "export": "0x242777c58",
+      "final_relation": {
+        "constant": "0x43",
+        "site": "0x242777e9c"
+      },
+      "index": "0x5811",
+      "kind": "BLRAA",
+      "levels": 2,
+      "modifier": "0x8c4c",
+      "on_disk_candidates": [
+        "0x24273ab98"
+      ],
+      "raw": "0x80123130c273ab98",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xb1",
+        "site": "0x242777ee0"
+      },
+      "site": "0x242777efc",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648970",
+      "export": "0x2427842a8",
+      "final_relation": {
+        "constant": "0x69",
+        "site": "0x2427844e4"
+      },
+      "index": "0x57ea",
+      "kind": "BLRAA",
+      "levels": 2,
+      "modifier": "0x63f0",
+      "on_disk_candidates": [
+        "0x242856ef0"
+      ],
+      "raw": "0x80118fc0c2856ef0",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xa0",
+        "site": "0x242784528"
+      },
+      "site": "0x242784544",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648890",
+      "export": "0x2427b4454",
+      "final_relation": {
+        "constant": "0xc4",
+        "site": "0x2427b4630"
+      },
+      "index": "0x57ce",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0xcc65",
+      "on_disk_candidates": [
+        "0x24252e50c"
+      ],
+      "raw": "0x80133194c252e50c",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0x69",
+        "site": "0x2427b4568"
+      },
+      "site": "0x2427b4648",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648780",
+      "export": "0x2427dff50",
+      "final_relation": {
+        "constant": "0xb3",
+        "site": "0x2427e016c"
+      },
+      "index": "0x57ac",
+      "kind": "BLRAA",
+      "levels": 2,
+      "modifier": "0xbef1",
+      "on_disk_candidates": [
+        "0x242a6d4a8"
+      ],
+      "raw": "0x8012fbc4c2a6d4a8",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xa0",
+        "site": "0x2427e01b0"
+      },
+      "site": "0x2427e01cc",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x2856489c8",
+      "export": "0x242856cb8",
+      "final_relation": {
+        "constant": "0xe",
+        "site": "0x242856e54"
+      },
+      "index": "0x57f5",
+      "kind": "BLRAA",
+      "levels": 2,
+      "modifier": "0x7164",
+      "on_disk_candidates": [
+        "0x242a6c508"
+      ],
+      "raw": "0x8011c590c2a6c508",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0x7a",
+        "site": "0x242856e98"
+      },
+      "site": "0x242856eb4",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648898",
+      "export": "0x2428affdc",
+      "final_relation": {
+        "constant": "0xe8",
+        "site": "0x2428b01e8"
+      },
+      "index": "0x57cf",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0xd31f",
+      "on_disk_candidates": [
+        "0x242848358"
+      ],
+      "raw": "0x80134c7cc2848358",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xa0",
+        "site": "0x2428b0170"
+      },
+      "site": "0x2428b0200",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x2856487c8",
+      "export": "0x242a469c0",
+      "final_relation": {
+        "constant": "0xd7",
+        "site": "0x242a46bb4"
+      },
+      "index": "0x57b5",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0xe74d",
+      "on_disk_candidates": [
+        "0x242511324"
+      ],
+      "raw": "0x80139d34c2511324",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xc4",
+        "site": "0x242a46af0"
+      },
+      "site": "0x242a46bcc",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648908",
+      "export": "0x242a59160",
+      "final_relation": {
+        "constant": "0x43",
+        "site": "0x242a5931c"
+      },
+      "index": "0x57dd",
+      "kind": "BLRAA",
+      "levels": 2,
+      "modifier": "0xe74d",
+      "on_disk_candidates": [
+        "0x242eaef44"
+      ],
+      "raw": "0x80239d34c2eaef44",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0x32",
+        "site": "0x242a59360"
+      },
+      "site": "0x242a5937c",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x2856487c8",
+      "export": "0x242b7ed44",
+      "final_relation": {
+        "constant": "0xc4",
+        "site": "0x242b7ef30"
+      },
+      "index": "0x57b5",
+      "kind": "BLRAA",
+      "levels": 1,
+      "modifier": "0xe74d",
+      "on_disk_candidates": [
+        "0x242511324"
+      ],
+      "raw": "0x80139d34c2511324",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0xe8",
+        "site": "0x242b7ee68"
+      },
+      "site": "0x242b7ef48",
+      "table": "0x28561ca20"
+    },
+    {
+      "entry": "0x285648ab8",
+      "export": "0x242dd84ec",
+      "final_relation": {
+        "constant": "0x43",
+        "site": "0x242dd86c8"
+      },
+      "index": "0x5813",
+      "kind": "BLRAA",
+      "levels": 2,
+      "modifier": "0x8ef",
+      "on_disk_candidates": [
+        "0x2428f9ec4"
+      ],
+      "raw": "0x802023bcc28f9ec4",
+      "root_slot": "0x2790c42e8",
+      "selector": "0x149",
+      "selector_relation": {
+        "constant": "0x32",
+        "site": "0x242dd870c"
+      },
+      "site": "0x242dd8728",
+      "table": "0x28561ca20"
+    }
+  ]
+}

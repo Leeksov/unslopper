@@ -24,7 +24,7 @@ function regardless of flattening.
 | **DexProtector** | XOR+ADD state-transform CFF | `profiles/dexprotector` | ✅ verified |
 | **Guardsquare (MVG / iXGuard / BitGuard)** | jump-table CFF + X16 syscalls + BLR dispatch | `profiles/mvg` + appliers | ✅ verified |
 | **Apple FairPlay (`makeOpaque`)** | S-box chains, affine/MBA, opaque preds, VM LUT | `passes/opaque_mba` + `passes/fairplay_dispatch` | ✅ verified |
-| **Apple CoreALD 4.1** | state-dependent S-box chains around indirect dispatch | `tools/coreald_sbox.py`, `tools/coreald_pac.py` + `passes/coreald_sbox` | [37 proven folds; 2 audited on-disk branch candidates](docs/coreald_pac.md) |
+| **Apple CoreALD 4.1** | state-dependent S-box chains around indirect dispatch | `tools/coreald_sbox.py`, `tools/coreald_pac_scan.py` + `passes/coreald_sbox` | [37 F5 folds; all 16 export transfers traced to PAC table entries](docs/coreald_pac.md) |
 | **Arxan-class** | MBA computed branches and hidden reachability | `passes/arxan_branches` + `passes/opaque_mba` | [C++ F5 recovery tested on three TMX libraries](docs/arxan_branch_analysis.md)¹ |
 
 ¹ The native pass resolves exact, locally proven ARM64 branch patterns. It does
@@ -168,9 +168,12 @@ instructions before changing GENERATED microcode. It never patches the Mach-O.
 This covers 37 sites in all 16 tested iOS 26.0.1 CoreALD exports and **does not resolve** its dynamic
 pointer tables or the asset-encryption algorithm. See [scope and test evidence](docs/coreald_sbox.md).
 
-`tools/coreald_pac.py` audits two `BRAA`/`BLRAA` sites and reports their
-on-disk pointer-table candidates. The table is writable, so these are not
-confirmed runtime targets. See [authenticated transfer evidence](docs/coreald_pac.md).
+`tools/coreald_pac_scan.py` audits all 16 export `BRAA`/`BLRAA` sites and
+reports their pointer-table candidates. Chomper reproduced all 17 branch
+register values with synthetic state; a device memory snapshot confirmed
+all 17 PAC-signed entries and modifiers at that time. The table is writable,
+so the report does not add static CFG edges. See
+[authenticated transfer evidence](docs/coreald_pac.md).
 
 ### Offline appliers
 
@@ -184,6 +187,8 @@ headless-verified scripts in [`tools/`](tools/):
 - `deslop_vm_lift.py` — runtime-assisted OLLVM-22 VM devirtualizer
 - `coreald_sbox.py` — prove and annotate CoreALD byte-dispatch constants
 - `coreald_pac.py` — audit authenticated indirect-transfer candidates
+- `coreald_pac_scan.py` — trace all 16 CoreALD export transfers
+- `coreald_chomper_probe.py` — emulate export prefixes to transfer sites
 
 ---
 

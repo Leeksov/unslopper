@@ -1,0 +1,145 @@
+{
+  "sample_sha256": "247842d90546265eb6ced34fa18d83bc3d2eaaa3d4c1e79bb2cd3aab0e91f24f",
+  "scope": "synthetic Chomper state; stops before PAC transfer",
+  "chomper_readonly_slots_rebased": 1746,
+  "checks": [
+    {
+      "export": "0x242510dfc",
+      "args_null": false,
+      "value": "0x8010d368c252f794",
+      "expected": "0x8010d368c252f794",
+      "modifier": "0x34da",
+      "match": true
+    },
+    {
+      "export": "0x242512cc0",
+      "args_null": false,
+      "value": "0x80133194c252e50c",
+      "expected": "0x80133194c252e50c",
+      "modifier": "0xcc65",
+      "match": true
+    },
+    {
+      "export": "0x24252fb5c",
+      "args_null": true,
+      "value": "0x80121a74c252fbac",
+      "expected": "0x80121a74c252fbac",
+      "modifier": "0x869d",
+      "match": true
+    },
+    {
+      "export": "0x24252fb5c",
+      "args_null": false,
+      "value": "0x80121a74c252fbb4",
+      "expected": "0x80121a74c252fbb4",
+      "modifier": "0x869d",
+      "match": true
+    },
+    {
+      "export": "0x24273b60c",
+      "args_null": false,
+      "value": "0x8012e0dcc28dfa3c",
+      "expected": "0x8012e0dcc28dfa3c",
+      "modifier": "0xb837",
+      "match": true
+    },
+    {
+      "export": "0x242747ef0",
+      "args_null": false,
+      "value": "0x8010d368c252f794",
+      "expected": "0x8010d368c252f794",
+      "modifier": "0x34da",
+      "match": true
+    },
+    {
+      "export": "0x24277785c",
+      "args_null": false,
+      "value": "0x80133194c252e50c",
+      "expected": "0x80133194c252e50c",
+      "modifier": "0xcc65",
+      "match": true
+    },
+    {
+      "export": "0x242777c58",
+      "args_null": false,
+      "value": "0x80123130c273ab98",
+      "expected": "0x80123130c273ab98",
+      "modifier": "0x8c4c",
+      "match": true
+    },
+    {
+      "export": "0x2427842a8",
+      "args_null": false,
+      "value": "0x80118fc0c2856ef0",
+      "expected": "0x80118fc0c2856ef0",
+      "modifier": "0x63f0",
+      "match": true
+    },
+    {
+      "export": "0x2427b4454",
+      "args_null": false,
+      "value": "0x80133194c252e50c",
+      "expected": "0x80133194c252e50c",
+      "modifier": "0xcc65",
+      "match": true
+    },
+    {
+      "export": "0x2427dff50",
+      "args_null": false,
+      "value": "0x8012fbc4c2a6d4a8",
+      "expected": "0x8012fbc4c2a6d4a8",
+      "modifier": "0xbef1",
+      "match": true
+    },
+    {
+      "export": "0x242856cb8",
+      "args_null": false,
+      "value": "0x8011c590c2a6c508",
+      "expected": "0x8011c590c2a6c508",
+      "modifier": "0x7164",
+      "match": true
+    },
+    {
+      "export": "0x2428affdc",
+      "args_null": false,
+      "value": "0x80134c7cc2848358",
+      "expected": "0x80134c7cc2848358",
+      "modifier": "0xd31f",
+      "match": true
+    },
+    {
+      "export": "0x242a469c0",
+      "args_null": false,
+      "value": "0x80139d34c2511324",
+      "expected": "0x80139d34c2511324",
+      "modifier": "0xe74d",
+      "match": true
+    },
+    {
+      "export": "0x242a59160",
+      "args_null": false,
+      "value": "0x80239d34c2eaef44",
+      "expected": "0x80239d34c2eaef44",
+      "modifier": "0xe74d",
+      "match": true
+    },
+    {
+      "export": "0x242b7ed44",
+      "args_null": false,
+      "value": "0x80139d34c2511324",
+      "expected": "0x80139d34c2511324",
+      "modifier": "0xe74d",
+      "match": true
+    },
+    {
+      "export": "0x242dd84ec",
+      "args_null": false,
+      "value": "0x802023bcc28f9ec4",
+      "expected": "0x802023bcc28f9ec4",
+      "modifier": "0x8ef",
+      "match": true
+    }
+  ],
+  "matched": 17,
+  "total": 17
+}

@@ -12,7 +12,7 @@
 | **FairPlay `makeOpaque` (S-box/MBA/affine/opaque)** | **opaque_mba.cpp** | **done — verified on fairplayd.H2 (0 INTERR, _main 59→16)** |
 | **FairPlay VM dispatch LUT (52,614 slots)** | **fairplay_dispatch.cpp (run arg 10)** | **done — 52,466 resolved / 44,700 unique, matches inventory** |
 | **CoreALD 4.1 state-dependent S-box chains** | **tools/coreald_sbox.py + passes/coreald_sbox.cpp** | **partial — 37 low-byte folds verified on all 16 exports of iOS 26.0.1; 6 terminal ANDs unresolved** |
-| **CoreALD authenticated transfers** | **tools/coreald_pac.py** | **partial — two sites audited to three on-disk candidates; writable table prevents static runtime-edge claims** |
+| **CoreALD authenticated transfers** | **tools/coreald_pac_scan.py + coreald_chomper_probe.py** | **all 16 exports traced to 17 entries; 17/17 emulator checks and 17/17 live PAC snapshots matched; deeper context-derived edge remains unresolved** |
 | **Arxan/branding-stripped MBA branch obf** | **mba_simplify.cpp + opaque_mba.cpp** | **core covered ((a^b)+2(a&b)→a+b); verifying on NianticLabsPlugin** |
 | Arxan constant-target BR + reachability | C++ passes/arxan_branches + arxan_patterns | [60 TMX functions tested; JUMPOUT 60→4 versus existing passes](arxan_branch_analysis.md) |
 | Arxan direct syscalls (X16, SVC #0x80) | svc_resolver.cpp (same as MVG) | reuse — same pattern |

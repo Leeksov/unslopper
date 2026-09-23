@@ -1,0 +1,197 @@
+{
+  "moduleBase": "0x25fda1000",
+  "slide": "0x1d8d4000",
+  "checks": [
+    {
+      "export": "0x242510dfc",
+      "entry": "0x285648228",
+      "expected": "0x24252f794",
+      "actual": "0x24252f794",
+      "match": true,
+      "modifier": "0x34da",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242512cc0",
+      "entry": "0x285648890",
+      "expected": "0x24252e50c",
+      "actual": "0x24252e50c",
+      "match": true,
+      "modifier": "0xcc65",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x24252fb5c",
+      "entry": "0x285624f28",
+      "expected": "0x24252fbb4",
+      "actual": "0x24252fbb4",
+      "match": true,
+      "modifier": "0x869d",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x24252fb5c",
+      "entry": "0x285624fb8",
+      "expected": "0x24252fbac",
+      "actual": "0x24252fbac",
+      "match": true,
+      "modifier": "0x869d",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x24273b60c",
+      "entry": "0x2856487c0",
+      "expected": "0x2428dfa3c",
+      "actual": "0x2428dfa3c",
+      "match": true,
+      "modifier": "0xb837",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242747ef0",
+      "entry": "0x285648228",
+      "expected": "0x24252f794",
+      "actual": "0x24252f794",
+      "match": true,
+      "modifier": "0x34da",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x24277785c",
+      "entry": "0x285648890",
+      "expected": "0x24252e50c",
+      "actual": "0x24252e50c",
+      "match": true,
+      "modifier": "0xcc65",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242777c58",
+      "entry": "0x285648aa8",
+      "expected": "0x24273ab98",
+      "actual": "0x24273ab98",
+      "match": true,
+      "modifier": "0x8c4c",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x2427842a8",
+      "entry": "0x285648970",
+      "expected": "0x242856ef0",
+      "actual": "0x242856ef0",
+      "match": true,
+      "modifier": "0x63f0",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x2427b4454",
+      "entry": "0x285648890",
+      "expected": "0x24252e50c",
+      "actual": "0x24252e50c",
+      "match": true,
+      "modifier": "0xcc65",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x2427dff50",
+      "entry": "0x285648780",
+      "expected": "0x242a6d4a8",
+      "actual": "0x242a6d4a8",
+      "match": true,
+      "modifier": "0xbef1",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242856cb8",
+      "entry": "0x2856489c8",
+      "expected": "0x242a6c508",
+      "actual": "0x242a6c508",
+      "match": true,
+      "modifier": "0x7164",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x2428affdc",
+      "entry": "0x285648898",
+      "expected": "0x242848358",
+      "actual": "0x242848358",
+      "match": true,
+      "modifier": "0xd31f",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242a469c0",
+      "entry": "0x2856487c8",
+      "expected": "0x242511324",
+      "actual": "0x242511324",
+      "match": true,
+      "modifier": "0xe74d",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242a59160",
+      "entry": "0x285648908",
+      "expected": "0x242eaef44",
+      "actual": "0x242eaef44",
+      "match": true,
+      "modifier": "0xe74d",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242b7ed44",
+      "entry": "0x2856487c8",
+      "expected": "0x242511324",
+      "actual": "0x242511324",
+      "match": true,
+      "modifier": "0xe74d",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    },
+    {
+      "export": "0x242dd84ec",
+      "entry": "0x285648ab8",
+      "expected": "0x2428f9ec4",
+      "actual": "0x2428f9ec4",
+      "match": true,
+      "modifier": "0x8ef",
+      "pacMatches": true,
+      "wrongModifierMatches": false
+    }
+  ],
+  "process": "backgroundassets.user",
+  "limits": "Memory snapshot and PAC re-sign check; no CoreALD export invocation observed",
+  "downstream": {
+    "entry": "0x2856488c0",
+    "target": "0x242a66658",
+    "modifier": "0xcc65",
+    "pacMatches": true,
+    "observed_from": "read-only table snapshot; sub_24252FBB4 loads this entry before BLRAA"
+  },
+  "chunk_link": {
+    "helper_function": "BADecryptLicenseChunk",
+    "helper_call": "0x1d1f9ae1c",
+    "shared_cache_island": "0x1d49fac40",
+    "island_instructions": [
+      "ADRP X16 -> slid CoreALD page",
+      "ADD X16, X16, #0xb5c",
+      "BR X16"
+    ],
+    "target_export": "_FbLnABIk",
+    "target_static": "0x24252fb5c"
+  }
+}

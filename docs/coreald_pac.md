@@ -1,52 +1,96 @@
-# CoreALD authenticated indirect transfers
+# CoreALD authenticated dispatch
 
-This note concerns the iOS 26.0.1 `CoreALD` sample named in
-[the byte-dispatch report](coreald_sbox.md). The sample has 16 exported
-functions. Each has one authenticated indirect transfer in its IDA-owned
-range: one `BRAA` and 15 `BLRAA`. Nine calls have one indexed pointer-table
-load immediately before `BLRAA`; six have two. These instructions
-authenticate a pointer with the IA key and the modifier in `X17` before branching or calling. They
-are control-flow operations; they do not identify the asset cipher.
+## Scope and pointer format
 
-The on-disk table entries here use Apple's
+The tested image is iOS 26.0.1 `CoreALD` 4.1.0, SHA-256
+`247842d90546265eb6ced34fa18d83bc3d2eaaa3d4c1e79bb2cd3aab0e91f24f`.
+Its 16 exports each have one authenticated indirect transfer in their
+IDA-owned range: one `BRAA` and 15 `BLRAA`. Nine calls have one indexed
+pointer-table load immediately before `BLRAA`; six have two. These
+instructions authenticate control-flow pointers; they are not asset-cipher
+instructions.
+
+The on-disk entries use Apple's
 `DYLD_CHAINED_PTR_ARM64E_SHARED_CACHE` (format 13) authenticated-rebase
-layout. Bits 0–33 give an offset from the shared-cache base (`0x180000000` in
-this sample), bits 34–49 give `diversity`, bit 50 is `addrDiv`, bit 51 chooses
-the data or instruction key, bits 52–62 link the next fixup, and bit 63 is
-`auth`. All three inspected branch entries have `auth=1`, `addrDiv=0`, and
-`keyIsData=0`. Their `diversity` equals the immediate loaded into `X17`.
+layout. Bits 0–33 are the offset from shared-cache base `0x180000000` in
+this image; bits 34–49 are `diversity`; bit 50 is `addrDiv`; bit 51 selects
+IA or DA; bits 52–62 link the next fixup; bit 63 indicates authentication.
+The inspected branch entries have `auth=1`, `addrDiv=0`, `keyIsData=0`, and
+their diversity matches the immediate placed in `X17` before the branch.
 
-## Audited paths
+## All export candidates
 
-| Export / site | Native index evidence | On-disk candidate destinations |
+[`coreald_pac_scan.py`](../tools/coreald_pac_scan.py) follows each original
+native byte-table slice, verifies its low-byte relationship for all 256
+possible inputs, checks register liveness and table access, and evaluates
+both indices where there are two levels. All 16 exports select the same
+read-only root slot, `0x2790C42E8`, which points to table base
+`0x28561CA20`. These are the decoded destinations from the input image:
+
+| Export | Transfer | On-disk destination |
 | --- | --- | --- |
-| `_FbLnABIk` / `BRAA` `0x24252FBA8` | `CSET` from the null checks makes `W8` 0 or 1. `ORR` creates 0 or `0x12`; indexing starts at `0x10A1`. The read-only slot at `0x2790C42E8` points to table base `0x28561CA20`. | `0x24252FBB4` or `0x24252FBAC`; both entries have diversity `0x869D`, matching `X17`. |
-| `_CWeMQvFE` / `BLRAA` `0x242B7EF48` | The already verified first byte-permutation result is `0xE8`, so `X12` reads the same table-base slot at index `0xE8 + 0x61 = 0x149`. The final low-byte relation is `x ^ outer[inner[x] ^ 0x88] = 0xC4` for every byte `x`. `ADD W8,#0x56F1,W8,UXTB` therefore selects table index `0x57B5`. | `0x242511324`; the entry has diversity `0xE74D`, matching `X17`. |
+| `_adMedklO` | `BLRAA` | `0x24252F794` |
+| `_OZpDoyky` | `BLRAA` | `0x24252E50C` |
+| `_FbLnABIk` | `BRAA` | `0x24252FBB4` when both arguments are non-null; `0x24252FBAC` otherwise |
+| `_qENIaLkr` | `BLRAA` | `0x2428DFA3C` |
+| `_xrPnDyPw` | `BLRAA` | `0x24252F794` |
+| `_QSIlMWCo` | `BLRAA` | `0x24252E50C` |
+| `_niaOacKH` | `BLRAA` | `0x24273AB98` |
+| `_g4Bksweo` | `BLRAA` | `0x242856EF0` |
+| `_SljH37Yp` | `BLRAA` | `0x24252E50C` |
+| `_WJUddQgY` | `BLRAA` | `0x242A6D4A8` |
+| `_cdHFeFDJ` | `BLRAA` | `0x242A6C508` |
+| `_TBQFRWlW` | `BLRAA` | `0x242848358` |
+| `_fyzGzQHg` | `BLRAA` | `0x242511324` |
+| `_jYWQDEvI` | `BLRAA` | `0x242EAEF44` |
+| `_CWeMQvFE` | `BLRAA` | `0x242511324` |
+| `_bmXjyxfx` | `BLRAA` | `0x2428F9EC4` |
 
-The values above are **on-disk candidates**, not proven runtime edges. The
-pointer table at `0x28561CA20` is in an IDA segment with read and write
-permissions. A runtime store could change an entry before a transfer. The
-on-disk fixup also does not by itself prove that pointer authentication
-succeeds in a running process. The remaining 14 export transfers have not
-been traced to unique destinations; six have an extra indexed table load.
-The candidate at `0x242511324` is a 192-byte block that ends in another
-`BRAA X0,X17` at `0x2425113E0`. Its target is computed from the call context,
-so this first recovered call does not yet expose the chunk-decryption routine.
-
-[`tools/coreald_pac.py`](../tools/coreald_pac.py) checks the native instruction
-shapes, the input image SHA-256, the previously verified byte-permutation
-proof, the 256-byte relation at the final call, pointer-slot values,
-authenticated pointer fields, and executable destination mappings. It
-reports the candidates without modifying the IDB. `apply` adds comments
-containing destination addresses for manual navigation. It does **not** add
-IDA code xrefs or rewrite the original CFG.
+There are 17 pointer entries and 13 distinct destinations. The full
+per-export site, index, entry, raw fixup, PAC modifier, and result are in the
+[static evidence](evidence/coreald_pac_all_exports_26_0_1.json). The script
+is read-only by default. `apply` adds comments with destination addresses
+for manual navigation, and refuses to annotate if any export is unresolved.
+It does not add IDA code xrefs or rewrite the original CFG.
 
 ```text
-idat -A -S"/path/to/coreald_pac.py exit" CoreALD.i64
-idat -A -S"/path/to/coreald_pac.py apply exit" CoreALD.i64
+idat -A -S"/path/to/coreald_pac_scan.py exit" CoreALD.i64
+idat -A -S"/path/to/coreald_pac_scan.py apply exit" CoreALD.i64
 ```
 
-The isolated IDA 9.4 report and apply runs both completed on a copy of the
-database. The report produced the two paths and three candidates above. A
-runtime trace or a proof that the pointer table cannot be modified is needed
-before converting any candidate into a static CFG edge.
+[`coreald_pac.py`](../tools/coreald_pac.py) remains a smaller, independent
+check of two representative sites. Both scripts require the audited image
+SHA-256 and reject changed native shapes or pointer fields.
+
+## Emulator and device checks
+
+Chomper 0.3.8 loaded the image but left its shared-cache chained pointers
+as raw on-disk words. The [probe](../tools/coreald_chomper_probe.py) rebased
+1,746 unauthenticated read-only slots **in emulator memory only**, provided
+a synthetic stack-guard import and arguments, then stopped at each transfer.
+All 17 observed target-register values and `X17` modifiers matched the
+static report. This validates the index arithmetic under synthetic state;
+Chomper did not execute or validate PAC branches. See the
+[emulator evidence](evidence/coreald_pac_chomper_26_0_1.json).
+
+The device's running `backgroundassets.user` process had CoreALD loaded.
+A read-only Frida snapshot of its table after dyld fixups found all 17
+entries pointed to the expected slid code addresses after stripping IA PAC.
+Re-signing each stripped address with IA and the associated `X17` modifier
+reproduced the stored pointer in 17/17 cases. A modifier changed by one bit
+matched in 0/17 cases. See the [live snapshot](evidence/coreald_pac_live_26_0_1.json).
+This confirms the table contents and PAC modifiers **at the snapshot time**.
+It does not prove that a writable entry can never change or that any export
+was invoked by a real asset download during the observation.
+
+## Link to chunk decryption
+
+`ManagedBackgroundAssetsHelper` names a `BADecryptLicenseChunk` function.
+Its call at `0x1D1F9AE1C` reaches a shared-cache branch island which, in
+the live process, branches to CoreALD export `_FbLnABIk`. The export's
+non-null path enters `0x24252FBB4`, whose `BLRAA` table entry at
+`0x2856488C0` points to `0x242A66658` with valid modifier `0xCC65` in the
+device snapshot. That block ends at `0x242A66740` with `BRAA X9,X17`;
+`X9` is derived from the caller-provided context. The context-dependent
+branch is the next unresolved edge on the chunk path. Neither the asset
+cipher nor a license key has been identified from these transfers.
