@@ -44,6 +44,7 @@
 #include "svc_resolver.h"
 #include "verified_jump.h"
 #include "arxan_branches.h"
+#include "genshin.h"
 
 namespace unslop {
 
@@ -68,6 +69,7 @@ std::vector<Profile*> all_profiles()
   {
     // Detection-priority order: the more specific families first, the
     // generic OLLVM shape last so it does not shadow the others.
+    profiles.push_back(make_genshin()); // native prepass; skipped below
     profiles.push_back(make_mvg());
     profiles.push_back(make_promon());
     profiles.push_back(make_dexprotector());
@@ -226,7 +228,7 @@ int UnslopperOptblock::run_pipeline(mba_t *mba, bool *definitely_not_cff)
   Profile *profile = nullptr;
   for ( Profile *p : all_profiles() )
   {
-    if ( p != nullptr && p->detect(mba, regmap) )
+    if ( p != nullptr && !p->native_only() && p->detect(mba, regmap) )
     {
       profile = p;
       break;
@@ -619,6 +621,8 @@ struct plugin_ctx_t : public plugmod_t
 //   1 - disable  (remove handler)
 //   2 - enable   (install handler)
 //   3 - status
+//  30 - Genshin native manifest dry-run (before F5)
+//  31 - Genshin native manifest apply (IDB-only)
 //   0 / other - toggle
 bool idaapi plugin_ctx_t::run(size_t arg)
 {
@@ -679,6 +683,31 @@ bool idaapi plugin_ctx_t::run(size_t arg)
     case 10: // FairPlay: resolve the VM dispatch handler table (one-shot)
       fairplay_resolve_vm_table();
       break;
+
+    case 30: // Genshin native profile: verify one function without IDB edits.
+    case 31: // Genshin native profile: apply verified IDB-only branch rewrites.
+    {
+      qstring path;
+      if ( !qgetenv("UNSLOP_GENSHIN_MANIFEST", &path) || path.empty() )
+      {
+        const char *chosen = ask_file(false, "*.json", "Select Genshin unflatten manifest");
+        if ( chosen == nullptr )
+        {
+          msg("[unslop-genshin] no manifest selected\n");
+          break;
+        }
+        path = chosen;
+      }
+      GenshinReport report;
+      bool ok = run_genshin_manifest(path.c_str(), arg == 31, &report);
+      if ( !ok )
+        msg("[unslop-genshin] rejected: %s\n", report.error.c_str());
+      else
+        msg("[unslop-genshin] %s at %a: %d site(s), %d already folded, %d changed; review F5 before saving\n",
+            arg == 31 ? "applied" : "verified", report.function_start,
+            report.sites, report.already_folded, report.changed);
+      break;
+    }
 
     default: // toggle
       if ( installed && optimizer.active )

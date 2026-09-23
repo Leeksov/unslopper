@@ -61,6 +61,7 @@ ida_add_plugin(unslopper
         src/profiles/promon.cpp
         src/profiles/dexprotector.cpp
         src/profiles/mvg.cpp
+        src/profiles/genshin.cpp
 )
 
 # Keep the installable artifact with this build rather than inside the SDK.

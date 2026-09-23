@@ -17,6 +17,10 @@ class Profile
 public:
   virtual ~Profile() {}
 
+  // Native-only profiles run before Hex-Rays constructs microcode. They are
+  // registered for discovery but skipped by the generic microcode CFF engine.
+  virtual bool native_only() const { return false; }
+
   // Human-readable name, e.g. "OLLVM".
   virtual const char *name() const = 0;
 
@@ -50,6 +54,7 @@ Profile *make_ollvm();
 Profile *make_promon();
 Profile *make_dexprotector();
 Profile *make_mvg();
+Profile *make_genshin();
 
 // Registry of every profile instance, in detection-priority order. Defined in
 // the registry / plugin TU. Callers do not own the returned pointers.

@@ -18,6 +18,7 @@ enum class ProfileKind
   PROMON,
   DEXPROTECTOR,
   MVG,
+  GENSHIN,    // verified native table-branch recovery before Hex-Rays F5
   FAIRPLAY,   // Apple makeOpaque: S-box/MBA/affine/opaque + VM dispatch LUT
   ARXAN,      // branding-stripped MBA branch obfuscator (integrity-centric)
 };

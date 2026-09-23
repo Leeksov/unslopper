@@ -13,6 +13,7 @@
 | **FairPlay VM dispatch LUT (52,614 slots)** | **fairplay_dispatch.cpp (run arg 10)** | **done — 52,466 resolved / 44,700 unique, matches inventory** |
 | **Arxan/branding-stripped MBA branch obf** | **mba_simplify.cpp + opaque_mba.cpp** | **core covered ((a^b)+2(a&b)→a+b); verifying on NianticLabsPlugin** |
 | Arxan constant-target BR + reachability | C++ passes/arxan_branches + arxan_patterns | [60 TMX functions tested; JUMPOUT 60→4 versus existing passes](arxan_branch_analysis.md) |
+| Genshin 7.1 relocated table branches | native `profiles/genshin.cpp` + `tools/yuanshen_unflatten_manifest.py` | [four independent functions tested in headless IDA: 10/10, 18/18, 3/3, and 2/2 sites](genshin_unflatten.md); other complete static manifests await IDA ownership |
 | Arxan direct syscalls (X16, SVC #0x80) | svc_resolver.cpp (same as MVG) | reuse — same pattern |
 | Arxan BRK #1 traps / __PII section | annotation (planned) | annotation, not deobf — pending IDB verify |
 | OLLVM-22 BogusControlFlow | mba_simplify::eliminate_opaque_predicates | partial |

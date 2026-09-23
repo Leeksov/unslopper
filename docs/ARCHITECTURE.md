@@ -125,6 +125,12 @@ families first, generic OLLVM last so it does not shadow the others. Detection
 is structural — magic-constant comparisons, register pools, EOR+ADD selectors,
 jump-table shape — never a name or a hash.
 
+The `genshin` entry is a `native_only()` profile. It is registered alongside
+the others but skipped by the generic microcode dispatcher detector. Its
+actions `30`/`31` run before F5 against an offline proof manifest, because
+IDA's incomplete switch metadata can discard target blocks before any
+`optblock_t` pass receives them. See [Genshin unflatten](genshin_unflatten.md).
+
 The opaque/MBA layer is intentionally **not** a profile: it is family-agnostic
 and must run even when no profile matches (FairPlay/Arxan handlers have no
 dispatcher).

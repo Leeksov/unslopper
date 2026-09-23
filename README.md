@@ -25,6 +25,7 @@ function regardless of flattening.
 | **Guardsquare (MVG / iXGuard / BitGuard)** | jump-table CFF + X16 syscalls + BLR dispatch | `profiles/mvg` + appliers | ✅ verified |
 | **Apple FairPlay (`makeOpaque`)** | S-box chains, affine/MBA, opaque preds, VM LUT | `passes/opaque_mba` + `passes/fairplay_dispatch` | ✅ verified |
 | **Arxan-class** | MBA computed branches and hidden reachability | `passes/arxan_branches` + `passes/opaque_mba` | [C++ F5 recovery tested on three TMX libraries](docs/arxan_branch_analysis.md)¹ |
+| **Genshin Impact 7.1** | relocated pointer-table branches, including Boolean strided tables | native `profiles/genshin` + offline proof manifest | [four independent headless IDA tests](docs/genshin_unflatten.md) |
 
 ¹ The native pass resolves exact, locally proven ARM64 branch patterns. It does
 not disable integrity or debugger checks, and does not claim full protector
@@ -134,6 +135,13 @@ Set `UNSLOP_NO_STACK_JTBL=1` to disable only this pass for diagnosis.
   | `1` / `2` | disable / enable the optimizer |
   | `3` | print status (functions deflattened, edges, errors) |
   | `10` | **FairPlay**: resolve the VM dispatch handler LUT (one-shot) |
+  | `30` / `31` | **Genshin**: verify / apply a complete, SHA-gated IDB-only branch manifest before F5 |
+
+The Genshin actions read `UNSLOP_GENSHIN_MANIFEST` or ask for a JSON file. Build
+the manifest with `tools/yuanshen_unflatten_manifest.py`; see
+[Genshin native profile](docs/genshin_unflatten.md). This early IDB pass is
+needed because an incomplete IDA switch table can truncate microcode before
+the ordinary F5 optimizer runs.
 
 ### Environment switches
 
