@@ -3,8 +3,9 @@
 This note concerns the iOS 26.0.1 `CoreALD` sample named in
 [the byte-dispatch report](coreald_sbox.md). The sample has 16 exported
 functions. Each has one authenticated indirect transfer in its IDA-owned
-range: one `BRAA` and 15 `BLRAA`. These instructions authenticate a pointer
-with the IA key and the modifier in `X17` before branching or calling. They
+range: one `BRAA` and 15 `BLRAA`. Nine calls have one indexed pointer-table
+load immediately before `BLRAA`; six have two. These instructions
+authenticate a pointer with the IA key and the modifier in `X17` before branching or calling. They
 are control-flow operations; they do not identify the asset cipher.
 
 The on-disk table entries here use Apple's
@@ -27,7 +28,7 @@ pointer table at `0x28561CA20` is in an IDA segment with read and write
 permissions. A runtime store could change an entry before a transfer. The
 on-disk fixup also does not by itself prove that pointer authentication
 succeeds in a running process. The remaining 14 export transfers have not
-been traced to unique destinations; several have an extra indexed table load.
+been traced to unique destinations; six have an extra indexed table load.
 The candidate at `0x242511324` is a 192-byte block that ends in another
 `BRAA X0,X17` at `0x2425113E0`. Its target is computed from the call context,
 so this first recovered call does not yet expose the chunk-decryption routine.
