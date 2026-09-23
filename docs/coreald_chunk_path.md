@@ -61,7 +61,12 @@ the failure occurred before this emulation reached the byte contents; it
 does not establish a key format or cipher. Those are observed numeric
 results. The helper maps `-7002` to “A parameter is invalid.” and `-7004`
 to “A memory failure occurred.” via its status conversion and error-string
-switch. The probe used synthetic buffer
+switch. Tracing the nonzero path backward found a CoreALD internal call at
+`0x24277A3EC` requesting `0xE0` (224) bytes and returning null; the failure
+is then written through the context at `0x242783ED4`. Supplying a bare
+buffer for that allocation in a separate experiment reaches further code
+but does not create a valid session, because later code expects additional
+context state. The probe used synthetic buffer
 contents, an older Chomper rootfs, and a stubbed stack-probe import. A
 missing emulated system prerequisite remains possible. The bounded case
 matrix is in the [initialization evidence](evidence/coreald_chomper_init_26_0_1.json).

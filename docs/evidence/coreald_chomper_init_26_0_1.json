@@ -13,6 +13,13 @@
     "-7002": "A parameter is invalid.",
     "-7004": "A memory failure occurred."
   },
+  "emulator_allocation_trace": {
+    "call_site": "0x24277A3EC",
+    "requested_bytes": "0xE0",
+    "observed_return": "0x0",
+    "status_write": "0x242783ED4",
+    "meaning": "The synthetic nonzero-input path returns before reading either input buffer after a 224-byte internal allocation returns null."
+  },
   "cases": [
     {"length_a": 0, "length_b": 0, "status": "0xFFFFE4A6", "session": "0x0", "reads_a": 0, "reads_b": 0},
     {"length_a": 1, "length_b": 1, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
