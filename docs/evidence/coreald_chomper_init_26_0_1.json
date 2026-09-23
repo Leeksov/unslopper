@@ -1,0 +1,31 @@
+{
+  "sample_sha256": "247842d90546265eb6ced34fa18d83bc3d2eaaa3d4c1e79bb2cd3aab0e91f24f",
+  "scope": "synthetic Chomper 0.3.8 calls to _CWeMQvFE; exploratory, not a real license session",
+  "emulation_adjustments": [
+    "rebase extracted shared-cache pointer slots in emulator memory",
+    "replace PAC-signed code pointers with emulator-mapped destinations",
+    "skip an unmapped stack-probe import at 0x2426485CC"
+  ],
+  "input_contents": "two 512-byte buffers filled with repeating bytes 0x00 through 0xFF",
+  "helper_status_mapping": {
+    "conversion_function": "sub_1D1F9CACC",
+    "message_function": "sub_1D1F9BBEC",
+    "-7002": "A parameter is invalid.",
+    "-7004": "A memory failure occurred."
+  },
+  "cases": [
+    {"length_a": 0, "length_b": 0, "status": "0xFFFFE4A6", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 1, "length_b": 1, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 16, "length_b": 16, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 16, "length_b": 32, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 32, "length_b": 16, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 32, "length_b": 32, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 32, "length_b": 64, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 64, "length_b": 32, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 64, "length_b": 64, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 128, "length_b": 16, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 256, "length_b": 16, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0},
+    {"length_a": 256, "length_b": 32, "status": "0xFFFFE4A4", "session": "0x0", "reads_a": 0, "reads_b": 0}
+  ],
+  "limit": "The byte buffers were never read in these calls; no key format or cipher can be inferred from the returned statuses."
+}

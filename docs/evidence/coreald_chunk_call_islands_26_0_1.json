@@ -1,0 +1,38 @@
+{
+  "sample_sha256": "247842d90546265eb6ced34fa18d83bc3d2eaaa3d4c1e79bb2cd3aab0e91f24f",
+  "scope": "ManagedBackgroundAssetsHelper call sites, inspected shared-cache branch islands, and CoreALD targets on iOS 26.0.1",
+  "calls": [
+    {
+      "helper_site": "0x1d1f99020",
+      "helper_function": "sub_1D1F99004",
+      "island": "0x1d49fac60",
+      "coreald_export": "_QSIlMWCo",
+      "coreald_target": "0x24277785c",
+      "interpretation": "response deallocation inferred from helper error string; X0 is inherited from caller"
+    },
+    {
+      "helper_site": "0x1d1f9a5a8",
+      "helper_function": "BAStartLicenseCryptSession",
+      "island": "0x1d49fac30",
+      "coreald_export": "_CWeMQvFE",
+      "coreald_target": "0x242b7ed44",
+      "observed_arguments": "X0 byte buffer A, X1 length A, X2 byte buffer B, X3 length B, X4 output session pointer"
+    },
+    {
+      "helper_site": "0x1d1f9ae1c",
+      "helper_function": "BADecryptLicenseChunk",
+      "island": "0x1d49fac40",
+      "coreald_export": "_FbLnABIk",
+      "coreald_target": "0x24252fb5c",
+      "observed_arguments": "X0 session pointer, X1 chunk descriptor pointer"
+    },
+    {
+      "helper_site": "0x1d1f9cc04",
+      "helper_function": "sub_1D1F9CBE8",
+      "island": "0x1d49fac50",
+      "coreald_export": "_OZpDoyky",
+      "coreald_target": "0x242512cc0",
+      "interpretation": "session cleanup inferred from surrounding code"
+    }
+  ]
+}

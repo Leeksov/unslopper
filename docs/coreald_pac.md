@@ -93,4 +93,6 @@ non-null path enters `0x24252FBB4`, whose `BLRAA` table entry at
 device snapshot. That block ends at `0x242A66740` with `BRAA X9,X17`;
 `X9` is derived from the caller-provided context. The context-dependent
 branch is the next unresolved edge on the chunk path. Neither the asset
-cipher nor a license key has been identified from these transfers.
+cipher nor a license key has been identified from these transfers. The
+[license-chunk call path](coreald_chunk_path.md) records the helper's
+observed argument layout and the limits of synthetic emulation.

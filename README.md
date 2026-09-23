@@ -174,6 +174,8 @@ register values with synthetic state; a device memory snapshot confirmed
 all 17 PAC-signed entries and modifiers at that time. The table is writable,
 so the report does not add static CFG edges. See
 [authenticated transfer evidence](docs/coreald_pac.md).
+The helper's crypt-session calls and 32 KiB chunk descriptor are documented
+in [the license-chunk path](docs/coreald_chunk_path.md).
 
 ### Offline appliers
 
