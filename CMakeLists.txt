@@ -56,6 +56,7 @@ ida_add_plugin(unslopper
         src/passes/verified_jump.cpp
         src/passes/svc_resolver.cpp
         src/passes/fairplay_dispatch.cpp
+        src/passes/coreald_sbox.cpp
         # protector profiles
         src/profiles/ollvm.cpp
         src/profiles/promon.cpp

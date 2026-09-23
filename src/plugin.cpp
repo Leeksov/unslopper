@@ -33,6 +33,7 @@
 #include "mba_simplify.h"
 #include "opaque_mba.h"
 #include "fairplay_dispatch.h"
+#include "coreald_sbox.h"
 #include "profile.h"
 #include "stack_jtbl.h"
 #include "ixguard_mba.h"
@@ -95,6 +96,7 @@ struct UnslopperOptblock : public optblock_t
   struct Diagnostics {
     StackJtblDiagnostics stack;
     ArxanDiagnostics arxan;
+    CoreALDDiagnostics coreald;
     std::string hash_reason="not_attempted";
     int mba=0,hash=0,hash_candidates=0,edges=0,errors=0,svc_flags=0;
   };
@@ -554,14 +556,19 @@ struct plugin_ctx_t : public plugmod_t
       if ( mba != nullptr && ctx->optimizer.active )
       {
         auto it = ctx->optimizer.diagnostics.find(mba->entry_ea);
-        if ( it != ctx->optimizer.diagnostics.end() && it->second.arxan.changed > 0 )
+        if ( it != ctx->optimizer.diagnostics.end()
+             && (it->second.arxan.changed > 0 || it->second.coreald.changed > 0) )
         {
-          try { mba->verify(true); it->second.arxan.verified = 1; }
+          try
+          {
+            mba->verify(true);
+            if ( it->second.arxan.changed > 0 ) it->second.arxan.verified = 1;
+          }
           catch ( ... )
           {
             ++it->second.errors;
             ++ctx->optimizer.stat_errors;
-            msg("[unslop] Arxan microcode verification failed at %a\n", mba->entry_ea);
+            msg("[unslop] native microcode verification failed at %a\n", mba->entry_ea);
             return MERR_BADBLK;
           }
         }
@@ -582,6 +589,7 @@ struct plugin_ctx_t : public plugmod_t
         {
           restore_arxan_branches(mba, &ctx->optimizer.diagnostics[mba->entry_ea].arxan);
           restore_verified_jumps(mba);
+          restore_coreald_sboxes(mba, &ctx->optimizer.diagnostics[mba->entry_ea].coreald);
         }
       }
     }
@@ -661,6 +669,8 @@ bool idaapi plugin_ctx_t::run(size_t arg)
         msg("[unslop-arxan] {\"ea\":\"0x%llx\",\"verified\":%d,\"reachable_added\":%d,\"matched\":%d,\"changed\":%d,\"ownership_rejected\":%d,\"entry_rejected\":%d,\"missing_block\":%d}\n",
             (unsigned long long)row.first,d.arxan.verified,d.arxan.reachable_added,d.arxan.matched,d.arxan.changed,
             d.arxan.ownership_rejected,d.arxan.entry_rejected,d.arxan.missing_block);
+        msg("[unslop-coreald] {\"ea\":\"0x%llx\",\"markers\":%d,\"proven\":%d,\"changed\":%d,\"rejected\":%d}\n",
+            (unsigned long long)row.first,d.coreald.markers,d.coreald.proven,d.coreald.changed,d.coreald.rejected);
       }
       break;
     case 20: // Explicit analysis assumption; does not patch target data.

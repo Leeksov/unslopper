@@ -24,6 +24,7 @@ function regardless of flattening.
 | **DexProtector** | XOR+ADD state-transform CFF | `profiles/dexprotector` | ✅ verified |
 | **Guardsquare (MVG / iXGuard / BitGuard)** | jump-table CFF + X16 syscalls + BLR dispatch | `profiles/mvg` + appliers | ✅ verified |
 | **Apple FairPlay (`makeOpaque`)** | S-box chains, affine/MBA, opaque preds, VM LUT | `passes/opaque_mba` + `passes/fairplay_dispatch` | ✅ verified |
+| **Apple CoreALD 4.1** | state-dependent S-box chains around indirect dispatch | `tools/coreald_sbox.py` + `passes/coreald_sbox` | [37 proven folds across all 16 exports; dispatch unresolved](docs/coreald_sbox.md) |
 | **Arxan-class** | MBA computed branches and hidden reachability | `passes/arxan_branches` + `passes/opaque_mba` | [C++ F5 recovery tested on three TMX libraries](docs/arxan_branch_analysis.md)¹ |
 
 ¹ The native pass resolves exact, locally proven ARM64 branch patterns. It does
@@ -154,6 +155,19 @@ The pass resolves proven local branches and includes their existing target block
 in reachability without modifying IDB bytes or xrefs. Python is used only for
 independent testing. See [algorithm and measured TMX results](docs/arxan_branch_analysis.md).
 
+### CoreALD byte-dispatch cleanup
+
+For CoreALD's state-dependent S-box chains, run `tools/coreald_sbox.py` in IDA
+with the cursor in an export wrapper. Dry-run is the default. Use the `apply`
+argument to add proof comments; with the plugin enabled, F5 folds each verified
+terminal `AND Wn,Wn,#0xff` into its proven constant. The analyzer checks the
+original straight-line ARM64 register flow and both read-only 256-byte tables,
+including indirect table bases encoded as shared-cache rebases. The plugin
+rechecks the tables, pointer slots, and a fingerprint of the original
+instructions before changing GENERATED microcode. It never patches the Mach-O.
+This covers 37 sites in all 16 tested iOS 26.0.1 CoreALD exports and **does not resolve** its dynamic
+pointer tables or the asset-encryption algorithm. See [scope and test evidence](docs/coreald_sbox.md).
+
 ### Offline appliers
 
 Some annotations are more reliable at the disassembly level than in microcode
@@ -164,6 +178,7 @@ headless-verified scripts in [`tools/`](tools/):
 - `apply_dispatch_map.py` — annotate MVG RASP BLR dispatch (596 sites)
 - `apply_appdome_trampolines.py` — name AppDome import trampolines (65,535 stubs)
 - `deslop_vm_lift.py` — runtime-assisted OLLVM-22 VM devirtualizer
+- `coreald_sbox.py` — prove and annotate CoreALD byte-dispatch constants
 
 ---
 
@@ -188,6 +203,7 @@ unslopper/
 │   │   ├── mba_simplify.*    #   Hikari MBA identity ruleset
 │   │   ├── svc_resolver.*    #   X16 syscall resolution
 │   │   ├── fairplay_dispatch.*  # FairPlay VM LUT resolver (action 10)
+│   │   ├── coreald_sbox.*       # verified CoreALD byte-dispatch folds
 │   │   ├── anti_decompiler.* #   indirect-jump / anti-decompiler passes
 │   │   ├── semantic_diffusion.* # volatile-slot round-trip folding
 │   │   └── virtual_call.*    #   synthetic-vtable devirtualization
