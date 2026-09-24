@@ -71,6 +71,17 @@ contents, an older Chomper rootfs, and a stubbed stack-probe import. A
 missing emulated system prerequisite remains possible. The bounded case
 matrix is in the [initialization evidence](evidence/coreald_chomper_init_26_0_1.json).
 
+The same early failure was reproduced **on the iOS 26.0.1 device**, using
+Frida in an isolated `sleep` process that loaded CoreALD. With non-null
+buffers of lengths 32 and 16, `_CWeMQvFE` returned `-7004`, created no
+session, and its internal call at `0x242EC23F0` requested 224 bytes and
+returned null. Empty lengths returned `-7002`. The
+[device harness](../tools/coreald_device_harness.py) records only lengths,
+status codes, and allocation size/nullness; see its
+[result](evidence/coreald_device_harness_26_0_1.json). Thus the specific
+early failure is not solely a Chomper artifact, though this isolated
+process still lacks a real license-delivery context.
+
 [`coreald_runtime_probe.py`](../tools/coreald_runtime_probe.py) can watch a
 real session without reading or recording key and chunk bytes. It records
 buffer lengths, chunk-descriptor shape, and return statuses, then detaches.

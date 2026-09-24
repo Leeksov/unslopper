@@ -1,0 +1,26 @@
+{
+  "process": "sleep",
+  "pid": 5148,
+  "imageSize": 11847424,
+  "results": [
+    {
+      "lenA": 0,
+      "lenB": 0,
+      "allocations": [],
+      "status": -7002,
+      "sessionCreated": false
+    },
+    {
+      "lenA": 32,
+      "lenB": 16,
+      "allocations": [
+        {
+          "requested": 224,
+          "returnedNull": true
+        }
+      ],
+      "status": -7004,
+      "sessionCreated": false
+    }
+  ]
+}

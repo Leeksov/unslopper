@@ -19,9 +19,13 @@ input buffers. Attach a tracer to process `CoreALDProbe`; the existing
 [`tools/coreald_runtime_probe.py`](../../tools/coreald_runtime_probe.py) supports
 `--process CoreALDProbe`.
 
-On the iOS 26.0.1 test device, a complete bundle is registered under
-`com.leeksov.corealdprobe`. The screen was locked during this run, so the
-first launch and private-framework calls remain unverified.
+The ad hoc build passed local `codesign --verify`, but the iOS 26.0.1
+installer rejected it with `0xe8008014` (`ApplicationVerificationFailed`).
+A bundle that was registered manually did not launch. To use this GUI app,
+sign it with a development provisioning profile for the test device or an
+authorized installation method that trusts the signature. For immediate
+native API testing, use the [isolated Frida harness](../../tools/coreald_device_harness.py)
+instead; it has been verified on the device.
 
 This exercises CoreALD in an app process with the device's real dyld and
 pointer authentication. It is a private-API harness, not an Apple-hosted
