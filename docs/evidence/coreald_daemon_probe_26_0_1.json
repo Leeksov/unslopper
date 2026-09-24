@@ -1,0 +1,27 @@
+{
+  "scope": "Controlled CoreALD session-start calls inside iOS 26.0.1 backgroundassets.user",
+  "process": "backgroundassets.user",
+  "coreald_loaded": true,
+  "coreald_image_size": 11847424,
+  "frida_server": "17.18.0-ios26-head-pageplan-arm64e",
+  "inputs": "Synthetic non-null buffers; no license or chunk bytes recorded",
+  "calls": [
+    {
+      "length_a": 0,
+      "length_b": 0,
+      "status": -7002,
+      "session_created": false,
+      "internal_allocations": []
+    },
+    {
+      "length_a": 32,
+      "length_b": 16,
+      "status": -7004,
+      "session_created": false,
+      "internal_allocations": [
+        {"requested_bytes": 224, "returned_null": true}
+      ]
+    }
+  ],
+  "limit": "The call was made from a Frida agent with synthetic data, outside a real license-delivery transaction. No successful chunk decryption was observed."
+}

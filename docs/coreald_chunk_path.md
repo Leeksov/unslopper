@@ -82,6 +82,15 @@ status codes, and allocation size/nullness; see its
 early failure is not solely a Chomper artifact, though this isolated
 process still lacks a real license-delivery context.
 
+The controlled 32/16-byte call was repeated inside the protected
+`backgroundassets.user` daemon using the arm64e Frida server. CoreALD was
+already loaded there, yet the same 224-byte internal request returned null,
+`_CWeMQvFE` returned `-7004`, and no session was created. Empty lengths
+returned `-7002`. The [daemon evidence](evidence/coreald_daemon_probe_26_0_1.json)
+contains only lengths, status codes, and allocation nullness. A successful
+license-delivery transaction is still needed before attributing this error
+to a specific validity check or studying the byte transformation.
+
 [`coreald_runtime_probe.py`](../tools/coreald_runtime_probe.py) can watch a
 real session without reading or recording key and chunk bytes. It records
 buffer lengths, chunk-descriptor shape, and return statuses, then detaches.
