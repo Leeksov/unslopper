@@ -74,6 +74,9 @@ matrix is in the [initialization evidence](evidence/coreald_chomper_init_26_0_1.
 [`coreald_runtime_probe.py`](../tools/coreald_runtime_probe.py) can watch a
 real session without reading or recording key and chunk bytes. It records
 buffer lengths, chunk-descriptor shape, and return statuses, then detaches.
+The [CoreALD iOS test host](../examples/coreald-ios-probe/README.md) can
+exercise the same private calls using controlled buffers in its own app
+process; it cannot manufacture an Apple-hosted asset license.
 The initial 10-second watch attached successfully but observed no calls.
 For a device whose Frida server listens only on loopback, forward the port
 over SSH and run:

@@ -176,6 +176,8 @@ so the report does not add static CFG edges. See
 [authenticated transfer evidence](docs/coreald_pac.md).
 The helper's crypt-session calls and 32 KiB chunk descriptor are documented
 in [the license-chunk path](docs/coreald_chunk_path.md).
+An [iOS CoreALD test host](examples/coreald-ios-probe/README.md) exercises the
+private entry points with controlled buffers on a jailbroken test device.
 
 ### Offline appliers
 
