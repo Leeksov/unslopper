@@ -131,3 +131,15 @@ the network. CoreALD was also found loaded in `mobileassetd` and
 calls, but a synchronized successful redownload was not confirmed for
 those watches. These observations do not yet establish whether the small
 Apple-hosted pack uses the licensed CoreALD path at all.
+
+The separate [Mac download control](evidence/mac_encrypted_ba_fetch_2026-09-24.json)
+confirmed a fresh HTTP 200 retrieval of the public Control pack
+`control-ios-presets` from `odr.itunes.apple.com`: 1,174 bytes with the same
+SHA-256 as the earlier Mac copy. `aa list` rejects the raw bytes as an
+unsupported archive stream. [Apple describes its hosted packs as encrypted
+on its CDN](https://developer.apple.com/forums/thread/841376), but this
+test does not expose their cipher or key. The public
+App Store catalog returned zero packs for the internal-TestFlight-only
+`CoreALDTest` app, so the same Mac client has not yet retrieved that test
+pack's Apple-served encrypted bytes. Neither saved catalog nor evidence file
+includes signed CDN URLs or authentication tokens.

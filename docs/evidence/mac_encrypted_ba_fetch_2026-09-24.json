@@ -1,0 +1,21 @@
+{
+  "date": "2026-09-24",
+  "method": "Mac-only Media API catalog and HTTPS CDN download",
+  "testFlightOnlyApp": {
+    "appleId": "6815619549",
+    "catalogHttpStatus": 200,
+    "publicCatalogPackCount": 0,
+    "observation": "CoreALDTest is not exposed by the public App Store catalog while only an internal TestFlight release exists."
+  },
+  "publicAppControlPack": {
+    "appleId": "6502953520",
+    "identifier": "control-ios-presets",
+    "catalogHttpStatus": 200,
+    "cdnHttpStatus": 200,
+    "downloadedBytes": 1174,
+    "sha256": "a3111eb4b2cbabc04b706795fa55cfdb247704071c07b549860a5564ab5d0d11",
+    "matchedEarlierCopy": true,
+    "appleArchiveParser": "Invalid/non-supported archive stream",
+    "interpretation": "Raw CDN retrieval succeeds from Mac; the parser error is consistent with encrypted content but does not independently identify the cipher."
+  }
+}
