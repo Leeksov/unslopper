@@ -1,0 +1,4 @@
+build/
+*.xcodeproj/
+*.aar
+Pack/Payload/payload.bin

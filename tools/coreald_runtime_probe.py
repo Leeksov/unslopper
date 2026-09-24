@@ -65,28 +65,43 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", default="127.0.0.1:37142")
-    parser.add_argument("--process", default="backgroundassets.user")
+    parser.add_argument("--device-id", help="Use an already discovered Frida device instead of a TCP endpoint")
+    parser.add_argument("--process", action="append", help="Process to watch; may be repeated")
     parser.add_argument("--seconds", type=int, default=30)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
-    device = frida.get_device_manager().add_remote_device(args.endpoint)
-    session = device.attach(args.process)
+    device = (frida.get_device(args.device_id) if args.device_id else
+              frida.get_device_manager().add_remote_device(args.endpoint))
     events = []
+    sessions = []
+    scripts = []
 
-    def on_message(message, data):
-        event = message.get("payload", message)
-        events.append(event)
-        print(json.dumps(event, sort_keys=True), flush=True)
+    def message_handler(process):
+        def on_message(message, data):
+            payload = message.get("payload", message)
+            event = {"process": process, **payload} if isinstance(payload, dict) else {
+                "process": process, "payload": payload}
+            events.append(event)
+            print(json.dumps(event, sort_keys=True), flush=True)
+        return on_message
 
-    script = session.create_script(AGENT)
-    script.on("message", on_message)
     try:
-        script.load()
+        for process in args.process or ["backgroundassets.user"]:
+            session = device.attach(process)
+            sessions.append(session)
+            script = session.create_script(AGENT)
+            scripts.append(script)
+            script.on("message", message_handler(process))
+            script.load()
         time.sleep(max(1, args.seconds))
     finally:
-        script.unload()
-        session.detach()
+        for script in scripts:
+            try: script.unload()
+            except Exception: pass
+        for session in sessions:
+            try: session.detach()
+            except Exception: pass
         if args.output:
             args.output.write_text(json.dumps(events, indent=2) + "\n")
     print(json.dumps({"events": len(events), "calls": sum(

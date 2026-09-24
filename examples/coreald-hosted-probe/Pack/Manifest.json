@@ -1,0 +1,9 @@
+{
+  "assetPackID": "CoreALDTest",
+  "downloadPolicy": {"onDemand": {}},
+  "fileSelectors": [
+    {"file": "Payload/marker.txt"},
+    {"file": "Payload/payload.bin"}
+  ],
+  "platforms": ["iOS"]
+}

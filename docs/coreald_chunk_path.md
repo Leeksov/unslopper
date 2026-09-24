@@ -110,3 +110,24 @@ The remaining decisive evidence is a real, successful
 `BADecryptLicenseChunk` invocation. The input-buffer lengths, branch path,
 return status, and before/after chunk bytes would distinguish validation
 from the byte transformation. No license material is included in this repo.
+
+## Apple-hosted managed asset pack control experiment
+
+An independent iOS 26 test app (`com.leeksov.corealdhostedprobe`) and
+`CoreALDTest` managed asset pack were uploaded to App Store Connect as
+TestFlight build 1.0 (1) and pack version 1. The pack processed to
+`READY_FOR_TESTING`, and the app reported a successful
+`ensureLocalAvailability` call. Subsequent taps of that button may only
+reuse the local pack, so they are not evidence of a new download.
+
+Build 1.0 (2) added an explicit `remove(assetPackWithID:)` followed by
+`ensureLocalAvailability`. The app reported `Redownloaded CoreALDTest,
+version 1` during a 90-second watch of `backgroundassets.user`; the
+[metadata-only capture](evidence/coreald_hosted_testflight_redownload_26_0_1.json)
+contains the `ready` event and no CoreALD session or chunk calls. That
+UI result confirms only that the API completed, not that bytes moved over
+the network. CoreALD was also found loaded in `mobileassetd` and
+`appstored`. Later watches of all three processes likewise observed no
+calls, but a synchronized successful redownload was not confirmed for
+those watches. These observations do not yet establish whether the small
+Apple-hosted pack uses the licensed CoreALD path at all.
