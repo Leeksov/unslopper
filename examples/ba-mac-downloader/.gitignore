@@ -1,0 +1,11 @@
+*.aar
+*.aar.part
+catalog*.json
+ba-catalog
+ba-download
+tf-ba-download
+ba-catalog-linux-*
+ba-download-linux-*
+*bootstrap*.json
+*request*.json
+*response*.bin
