@@ -43,18 +43,68 @@ attach('0x24252fb5c', {
       const d = args[1];
       info.kind = d.readU32();
       info.length = d.add(0x18).readU64().toNumber();
-      info.dataNonNull = !d.add(0x10).readPointer().isNull();
+      this.data = d.add(0x10).readPointer();
+      info.dataNonNull = !this.data.isNull();
       info.lengthPtrNonNull = !d.add(0x08).readPointer().isNull();
+      this.sampleLength = this.data.isNull() ? 0 : Math.min(info.length, 64);
+      if (this.sampleLength > 0) this.before = new Uint8Array(this.data.readByteArray(this.sampleLength));
     } catch (e) { info.error = String(e); }
     send(info);
   },
-  onLeave(retval) { send({event: 'chunk_leave', status: retval.toInt32()}); }
+  onLeave(retval) {
+    let changed = null;
+    try {
+      if (this.before) {
+        const after = new Uint8Array(this.data.readByteArray(this.sampleLength));
+        changed = after.some((byte, index) => byte !== this.before[index]);
+      }
+    } catch (_) {}
+    send({event: 'chunk_leave', status: retval.toInt32(),
+          sampledBytes: this.sampleLength || 0, sampledBytesChanged: changed});
+  }
 });
 
 attach('0x242512cc0', {
   onEnter(args) { send({event: 'stop_enter', sessionNonNull: !args[0].isNull()}); },
   onLeave(retval) { send({event: 'stop_leave', status: retval.toInt32()}); }
 });
+
+const helper = Process.findModuleByName('ManagedBackgroundAssetsHelper');
+if (helper) {
+  const helperSlide = helper.base.sub(ptr('0x1d1f77000'));
+  for (const [staticEA, event] of [
+    ['0x1d1f9a0fc', 'helper_session_start'],
+    ['0x1d1f9a9c8', 'helper_license_chunk'],
+    ['0x1d1f9ace4', 'helper_coreald_chunk_wrapper']
+  ]) {
+    try {
+      Interceptor.attach(ptr(staticEA).add(helperSlide), {
+        onEnter() { send({event}); }
+      });
+      send({event: 'hook_ready', target: event});
+    } catch (error) { send({event: 'hook_error', target: event, detail: String(error)}); }
+  }
+}
+
+const managed = Process.findModuleByName('ManagedBackgroundAssets');
+if (managed) {
+  const exports = managed.enumerateExports();
+  for (const [needle, event] of [
+    ['DecryptionProcessorC4keysAC', 'processor_init'],
+    ['DecryptionProcessorC10byteStream', 'processor_stream']
+  ]) {
+    const hit = exports.find(item => item.name.includes(needle) && item.name.endsWith('cfC'))
+      || exports.find(item => item.name.includes(needle) && item.name.endsWith('Tj'));
+    if (hit) {
+      try {
+        Interceptor.attach(hit.address.strip(), {
+          onEnter() { send({event}); }
+        });
+        send({event: 'hook_ready', target: event});
+      } catch (error) { send({event: 'hook_error', target: event, detail: String(error)}); }
+    }
+  }
+}
 
 send({event: 'ready', moduleBase: m.base.toString()});
 """
@@ -66,7 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", default="127.0.0.1:37142")
     parser.add_argument("--device-id", help="Use an already discovered Frida device instead of a TCP endpoint")
-    parser.add_argument("--process", action="append", help="Process to watch; may be repeated")
+    parser.add_argument("--process", action="append", help="Process name or PID to watch; may be repeated")
     parser.add_argument("--seconds", type=int, default=30)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -88,7 +138,8 @@ def main():
 
     try:
         for process in args.process or ["backgroundassets.user"]:
-            session = device.attach(process)
+            target = int(process) if process.isdecimal() else process
+            session = device.attach(target)
             sessions.append(session)
             script = session.create_script(AGENT)
             scripts.append(script)

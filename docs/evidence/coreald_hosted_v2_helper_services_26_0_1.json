@@ -1,0 +1,22 @@
+[
+  {
+    "process": "8549",
+    "event": "ready",
+    "moduleBase": "0x252b65000"
+  },
+  {
+    "process": "8547",
+    "event": "ready",
+    "moduleBase": "0x252b65000"
+  },
+  {
+    "process": "8491",
+    "event": "ready",
+    "moduleBase": "0x252b65000"
+  },
+  {
+    "process": "8483",
+    "event": "ready",
+    "moduleBase": "0x252b65000"
+  }
+]

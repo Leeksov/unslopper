@@ -1,0 +1,47 @@
+[
+  {
+    "process": "backgroundassets.user",
+    "event": "hook_ready",
+    "target": "processor_init"
+  },
+  {
+    "process": "backgroundassets.user",
+    "event": "hook_ready",
+    "target": "processor_stream"
+  },
+  {
+    "process": "backgroundassets.user",
+    "event": "ready",
+    "moduleBase": "0x252b65000"
+  },
+  {
+    "process": "mobileassetd",
+    "event": "hook_ready",
+    "target": "processor_init"
+  },
+  {
+    "process": "mobileassetd",
+    "event": "hook_ready",
+    "target": "processor_stream"
+  },
+  {
+    "process": "mobileassetd",
+    "event": "ready",
+    "moduleBase": "0x252b65000"
+  },
+  {
+    "process": "appstored",
+    "event": "hook_ready",
+    "target": "processor_init"
+  },
+  {
+    "process": "appstored",
+    "event": "hook_ready",
+    "target": "processor_stream"
+  },
+  {
+    "process": "appstored",
+    "event": "ready",
+    "moduleBase": "0x252b65000"
+  }
+]

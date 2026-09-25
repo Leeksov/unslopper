@@ -147,3 +147,37 @@ and downloading further copies now works on the Mac without Keychain or
 private macOS frameworks. Creating the *first* TestFlight session from
 Apple ID credentials alone is not yet reproduced. No saved catalog or
 evidence file in this repository includes signed CDN URLs or tokens.
+
+## Version 2 on-device extraction check
+
+The static content-decryption call chain is now identified. In
+`ManagedBackgroundAssets`, `DecryptionProcessor.ByteStream` reaches
+`sub_2555A2334` through its `Data` mutation closure. That function's `BL` at
+`0x2555A2374` targets a shared-cache branch island. Resolving the island in
+the running iOS 26.0.1 `backgroundassets.user` process gives
+`ManagedBackgroundAssetsHelper` address `0x1D1F9A9C8`, the start of
+`BADecryptLicenseChunk`. The helper then calls CoreALD `_FbLnABIk` with its
+session and a mutable chunk descriptor. Thus the named “license chunk”
+function is also on the archive-content decryption path. This is a verified
+static call chain and branch destination, not yet a captured successful
+runtime invocation. The cipher and key format remain unidentified.
+
+The iOS 26.0.1 test app reported that pack version 2 downloaded and that its
+marker could be read. The managed BA daemon's app-specific `Asset Packs`
+directory contains a `Contents/Payload` tree. The extracted `marker.txt` is
+58 bytes and `payload.bin` is 131,072 bytes. Both on-device SHA-256 digests
+match the corresponding files used to create version 2, byte for byte. See
+[the digest comparison](evidence/coreald_hosted_v2_device_files_26_0_1.json).
+The staging directory was empty at the time of inspection. This establishes
+that the installed pack is ordinary plaintext files after the system's
+processing; it does not identify which process or library transformed the
+encrypted CDN archive.
+
+Metadata-only watches of `backgroundassets.user`, `mobileassetd`, and
+`appstored`, followed by four `Managed Background Assets Helper Service`
+processes during a version-2 remove/redownload, observed no CoreALD session
+or chunk calls. All four helper processes did have CoreALD loaded. These
+watches are negative evidence for those particular windows, not proof that
+CoreALD is absent from the fresh-install path. The already installed version
+may have been reused. A version-3 pack with the same payload and a changed
+marker was uploaded as a control to force a new pack version.

@@ -1,0 +1,17 @@
+{
+  "build": "iOS 26.0.1 (23A355)",
+  "sourceImage": "ManagedBackgroundAssets",
+  "sourceFunction": "DecryptionProcessor.ByteStream stream body at 0x2555A17DC",
+  "closure": "sub_2555A4014 -> sub_2555A2334",
+  "branchInstruction": "0x2555A2374",
+  "branchIsland": "0x258C8F060",
+  "resolvedDestination": {
+    "image": "ManagedBackgroundAssetsHelper",
+    "offset": "0x239C8",
+    "staticAddress": "0x1D1F9A9C8",
+    "function": "BADecryptLicenseChunk"
+  },
+  "nextCall": "CoreALD _FbLnABIk via helper's mutable chunk descriptor",
+  "method": "IDA decompilation of both images; branch island decoded from runtime instructions in backgroundassets.user",
+  "scope": "Call chain only; no successful content-decryption invocation or cipher identification"
+}

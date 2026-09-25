@@ -1,0 +1,23 @@
+{
+  "device": "iOS 26.0.1 test iPhone",
+  "bundleId": "com.leeksov.corealdhostedprobe",
+  "assetPackId": "CoreALDTest",
+  "version": 2,
+  "location": "Managed Background Assets daemon container/Library/Application Support/com.leeksov.corealdhostedprobe/Asset Packs/<UUID>/Contents/Payload",
+  "stagingDirectoryEmpty": true,
+  "files": [
+    {
+      "name": "marker.txt",
+      "size": 58,
+      "deviceSha256": "1764f7ecf7608e780d631c4d4eda5bae5163a006b597d4bae7b29d0ea588dfbb",
+      "sourceSha256": "1764f7ecf7608e780d631c4d4eda5bae5163a006b597d4bae7b29d0ea588dfbb"
+    },
+    {
+      "name": "payload.bin",
+      "size": 131072,
+      "deviceSha256": "fbc46eee955a1f656f0a7e17da0503b9abc16472e921b89b5c00989fa220c93c",
+      "sourceSha256": "fbc46eee955a1f656f0a7e17da0503b9abc16472e921b89b5c00989fa220c93c"
+    }
+  ],
+  "method": "On-device sha256sum compared with local source file shasum; no license or account data read"
+}
