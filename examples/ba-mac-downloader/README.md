@@ -56,18 +56,17 @@ This tool currently uses the verified `appstore` token client and the bag endpoi
 
 ## Internal TestFlight asset packs (experimental)
 
-The `testflight` command builds a fresh manifest request on the Mac, authenticates the Apple ID with ipatool's emulated SAP implementation, and downloads the encrypted `.aar` without using Keychain or a private macOS framework:
+After one authorized TestFlight session has been bootstrapped, the Python command renews that session and downloads the encrypted pack entirely on the Mac. It uses no Apple ID password, cookie, Keychain, private macOS framework, or connected iPhone:
 
 ```sh
-go build -o tf-ba-download ./testflight
-./tf-ba-download --bootstrap-file /private/path/testflight-bootstrap.json \
-  --auth-with-captured-session --app-id 6815619549 \
-  --bundle-id com.leeksov.corealdhostedprobe --pack CoreALDTest \
-  --output CoreALDTest-encrypted.aar
+python3 testflight/bootstrap_fetch.py \
+  --bootstrap /private/path/testflight-bootstrap.json \
+  --app-id 6815619549 --bundle-id com.leeksov.corealdhostedprobe \
+  --pack CoreALDTest --output CoreALDTest-encrypted.aar
 ```
 
-The program prompts for Apple ID, password, and 2FA if needed. Passwords and cookies remain in process memory. The bootstrap JSON must have mode `0600` and contain `sessionId` and `accountId` from a valid TestFlight session for the same account. The program uses the old session to authenticate at `/v1/session/authenticate`, updates the bootstrap file with the renewed session, constructs a new `X-Session-Digest` and `X-Request-Id`, fetches `/v3/accounts/<accountId>/apps/<appId>/asset-packs`, and downloads the encrypted CDN archive. The bootstrap file is a credential: keep it private and do not commit it.
+The bootstrap JSON must have mode `0600` and contain `sessionId`, `accountId`, `dsid`, and `storefront` from the authorized TestFlight account. The command sends an empty `storeCookies` object and a locally calculated session digest to `/v1/session/authenticate`. Apple returned HTTP 200 and a renewed session in this experiment. The command atomically refreshes the bootstrap file, fetches `/v3/accounts/<accountId>/apps/<appId>/asset-packs`, and downloads the encrypted CDN archive. The bootstrap file is a credential: keep it private and do not commit it.
 
-For the owned test app, this Mac-only run fetched 132,041 encrypted bytes with SHA-256 `c00df669c0a4b5ac99f4be1004617305b7afd29b2455bfb62942422eaf04f8bf`. It matches an independent Mac CDN fetch and differs from the 132,041-byte source archive. `aa list` reads the source archive and rejects the Apple-delivered copy.
+For the owned test app, two consecutive passwordless Mac runs fetched 132,041 encrypted bytes with SHA-256 `c00df669c0a4b5ac99f4be1004617305b7afd29b2455bfb62942422eaf04f8bf`. Both match the independent Mac CDN fetch and differ from the 132,041-byte source archive. `aa list` reads the source archive and rejects the Apple-delivered copy.
 
-**Current limit:** A new TestFlight `sessionId` cannot yet be obtained from Apple ID credentials alone by this command. ipatool's App Store login returns the same account DSID and nine Apple-domain cookies, but an initial TestFlight `/v1/session/authenticate` request returns HTTP 401, code 102. With a valid existing session ID, the same Mac login obtains a renewed session and succeeds. A random session ID returns HTTP 401. Thus the first bootstrap still depends on an existing authorized TestFlight session; subsequent refreshes and encrypted downloads run on the Mac without an iPhone.
+**Current limit:** The *first* TestFlight `sessionId` cannot yet be obtained from Apple ID credentials alone. The separate `testflight` Go command explores this: ipatool's App Store login returns the same account DSID and nine Apple-domain cookies, but an initial TestFlight `/v1/session/authenticate` request returns HTTP 401, code 102. A random session ID returns HTTP 401. The first bootstrap still depends on an existing authorized TestFlight session; subsequent refreshes and encrypted downloads run on the Mac with the Python command above.
