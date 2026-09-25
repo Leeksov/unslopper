@@ -138,8 +138,12 @@ confirmed a fresh HTTP 200 retrieval of the public Control pack
 SHA-256 as the earlier Mac copy. `aa list` rejects the raw bytes as an
 unsupported archive stream. [Apple describes its hosted packs as encrypted
 on its CDN](https://developer.apple.com/forums/thread/841376), but this
-test does not expose their cipher or key. The public
-App Store catalog returned zero packs for the internal-TestFlight-only
-`CoreALDTest` app, so the same Mac client has not yet retrieved that test
-pack's Apple-served encrypted bytes. Neither saved catalog nor evidence file
-includes signed CDN URLs or authentication tokens.
+test does not expose their cipher or key. The public App Store catalog
+returned zero packs for the internal-TestFlight-only `CoreALDTest` app.
+The [separate TestFlight route](testflight_ba_mac_fetch.md) subsequently
+returned its signed CDN URL, and the Mac downloaded its encrypted
+132,041-byte Apple-delivered archive. Renewing a valid TestFlight session
+and downloading further copies now works on the Mac without Keychain or
+private macOS frameworks. Creating the *first* TestFlight session from
+Apple ID credentials alone is not yet reproduced. No saved catalog or
+evidence file in this repository includes signed CDN URLs or tokens.
