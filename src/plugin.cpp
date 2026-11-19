@@ -741,10 +741,37 @@ bool idaapi plugin_ctx_t::run(size_t arg)
 } // namespace unslop
 
 //--------------------------------------------------------------------------
+// The standalone native audit does not use Hex-Rays. If this plugin was built
+// with a Hex-Rays SDK revision older than the installed decompiler, keep the
+// normal optimizer disabled and allow only the explicitly enabled read-only
+// action 40. No callback or optblock handler is installed in this mode.
+struct promon_audit_only_ctx_t : public plugmod_t
+{
+  bool idaapi run(size_t arg) override
+  {
+    if ( arg != 40 )
+    {
+      msg("[unslop-promon32] audit-only mode accepts action 40 only\n");
+      return false;
+    }
+    unslop::audit_promon_thumb_native();
+    return true;
+  }
+};
+
+//--------------------------------------------------------------------------
 static plugmod_t *idaapi init()
 {
   if ( !init_hexrays_plugin() )
-    return nullptr; // no decompiler available
+  {
+    qstring enabled;
+    if ( qgetenv("UNSLOP_PROMON_THUMB_AUDIT", &enabled) && enabled == "1" )
+    {
+      msg("[unslop-promon32] Hex-Rays unavailable or incompatible; read-only audit mode\n");
+      return new promon_audit_only_ctx_t;
+    }
+    return nullptr; // no compatible decompiler; no optimizer installed
+  }
 
   // Initialize the debug-logging / diagnostics subsystem from the environment.
   unslop::log_init();

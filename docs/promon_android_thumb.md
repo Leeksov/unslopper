@@ -43,8 +43,20 @@ Validation: `python3 tests/test_promon_thumb_audit.py /absolute/path/to/the/ELF`
 checks the audited input hash, four byte windows, Thumb state writes and
 branches, and comparison instructions. Live IDA read-only checks confirmed
 `T=1`, 42/132 incoming code references, and both predecessor branches. The
-C++ plugin build still requires a matching IDA SDK; the Python test does not
-substitute for a compiled plugin smoke test.
+C++ plugin build requires an IDA SDK, and the full optimizer requires a
+matching Hex-Rays interface. The Python test does not substitute for a
+compiled plugin smoke test.
+
+If the plugin was built with an older Hex-Rays interface than the installed
+decompiler, setting `UNSLOP_PROMON_THUMB_AUDIT=1` before IDA starts enables an
+**audit-only** plugin context. It accepts action `40` and installs no optimizer,
+Hex-Rays callback or microcode handler. Other actions and F5 transformations
+remain unavailable in that context; use a matching SDK for the full plugin.
+In the validated setup, the supplied SDK advertised Hex-Rays broadcast version
+`5` while the installed IDA 9.5 decompiler answered version `6`. The compiled
+audit-only context loaded through IDA MCP, reported both hubs and the encoded
+call anchor, and rejected action `3`; without the environment gate it did not
+load. This smoke test verifies the diagnostic action, not the legacy optimizer.
 
 When the C++ plugin cannot be built, the matching read-only IDAPython fallback
 is `tools/promon_thumb_audit.py`. Explicitly run it in the corrected ELF's IDA
