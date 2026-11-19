@@ -45,6 +45,7 @@
 #include "verified_jump.h"
 #include "arxan_branches.h"
 #include "genshin.h"
+#include "promon_thumb_audit.h"
 
 namespace unslop {
 
@@ -708,6 +709,9 @@ bool idaapi plugin_ctx_t::run(size_t arg)
             report.sites, report.already_folded, report.changed);
       break;
     }
+    case 40: // Opt-in, read-only ARM32 Thumb Promon CFF audit.
+      audit_promon_thumb_native();
+      break;
 
     default: // toggle
       if ( installed && optimizer.active )

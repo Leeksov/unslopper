@@ -42,6 +42,7 @@ ida_add_plugin(unslopper
         src/core/block_dup.cpp
         src/core/cfg_rewriter.cpp
         src/core/stack_jtbl.cpp
+        src/core/promon_thumb_audit.cpp
         # transformation passes
         src/passes/mba_simplify.cpp
         src/passes/ixguard_mba.cpp

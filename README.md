@@ -136,6 +136,7 @@ Set `UNSLOP_NO_STACK_JTBL=1` to disable only this pass for diagnosis.
   | `3` | print status (functions deflattened, edges, errors) |
   | `10` | **FairPlay**: resolve the VM dispatch handler LUT (one-shot) |
   | `30` / `31` | **Genshin**: verify / apply a complete, SHA-gated IDB-only branch manifest before F5 |
+  | `40` | **Promon Android ARM32**: read-only, hash-gated Thumb CFF and encoded-call audit |
 
 The Genshin actions read `UNSLOP_GENSHIN_MANIFEST` or ask for a JSON file. Build
 the manifest with `tools/yuanshen_unflatten_manifest.py`; see
@@ -153,6 +154,7 @@ the ordinary F5 optimizer runs.
 | `UNSLOP_SVC=1` | enable the (opt-in, unreliable) microcode syscall fold |
 | `UNSLOP_FP_LUT_START/END=0x…` | override the FairPlay VM LUT bounds for other builds |
 | `UNSLOP_LOG=0..5`, `UNSLOP_LOG_FILE=…`, `UNSLOP_ONLY_EA=0x…` | diagnostics |
+| `UNSLOP_PROMON_THUMB_AUDIT=1` | permit action `40` on the [audited Valu ARM32 image](docs/promon_android_thumb.md); no IDB edits |
 
 ### Automatic C++ Arxan branch recovery
 

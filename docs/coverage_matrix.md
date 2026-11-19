@@ -5,6 +5,7 @@
 | Hikari CFF (scramble32 states) | profiles/ollvm.cpp + core | done |
 | Classic OLLVM (sr-tream, Junod) | profiles/ollvm.cpp | done (same scramble32) |
 | Promon SHIELD BST CFF + opaque | profiles/promon.cpp | done |
+| Promon Android ARM32 Thumb CFF + encoded calls (Valu 10.5.3) | core/promon_thumb_audit.cpp (action 40) | read-only, hash-gated audit of two hubs; rewrite not validated |
 | DexProtector XOR+ADD CFF | profiles/dexprotector.cpp | done |
 | BitGuard / MVG jump-table CFF | profiles/mvg.cpp | done |
 | Substitution / MBA (Hikari full set) | mba_simplify.cpp | expand from docs/hikari_mba_rules.md |
