@@ -2,7 +2,7 @@
 # Deslop test driver: for each sample, decompile CFF candidates with and without
 # the plugin (isolated IDAUSR dirs), then diff goto/switch/line metrics.
 set -u
-IDAT="/Applications/IDA Professional 9.4.app/Contents/MacOS/idat"
+IDAT="${IDAT:-/Applications/IDA Professional 9.5.app/Contents/MacOS/idat}"
 ROOT="<local-test-repo>"
 DY="<local-plugin>"
 HARNESS="$ROOT/tests/harness.py"

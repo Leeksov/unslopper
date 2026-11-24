@@ -2,7 +2,7 @@
 
 **A unified Hex-Rays microcode deobfuscator for commercial mobile protectors.**
 
-Unslopper is an IDA Pro 9.4 plugin that removes control-flow
+Unslopper is an IDA Pro 9.5 plugin that removes control-flow
 flattening (CFF), collapses opaque/MBA algebra, and resolves obfuscated
 dispatch across several commercial iOS/Android hardening products — from one
 codebase, behind a single `F5`.
@@ -59,7 +59,7 @@ corrupt microcode (that aborts IDA with an INTERR). Across all verified runs:
 
 ## Build
 
-Requires the IDA SDK 9.4, CMake 3.25+, Ninja and a C++17 toolchain.
+Requires the IDA SDK 9.5, CMake 3.25+, Ninja and a C++17 toolchain.
 Supports macOS, Windows and Linux, each on x64 and ARM64.
 
 ```sh
@@ -73,14 +73,14 @@ ninja -C build
 
 [Build plugin](https://github.com/Leeksov/unslopper/actions/workflows/build.yml)
 builds all six OS/architecture combinations on pushes to `main`, pull requests,
-and manual dispatch. Download the matching `unslopper-ida94-<os>-<arch>` artifact
+and manual dispatch. Download the matching `unslopper-ida95-<os>-<arch>` artifact
 from a successful run and unpack its ZIP. The plugin is in `package/plugins/`.
 Select the architecture of your **IDA installation**, regardless of the binary
 being analyzed. macOS uses `.dylib`, Windows `.dll`, and Linux `.so`.
 
 Tags matching `v*` publish all six archives and `SHA256SUMS.txt` to GitHub Releases
 only after the builds and reference tests pass. The public IDA SDK is pinned to
-commit `2a9143f2f4abd7f54fe20d1e40fb68391d19c4cb` (9.4); no IDA license or
+commit `04c0a982c80fd08388e7a3c26ff711fc1c38344d` (9.5); no IDA license or
 proprietary sample binaries are needed in CI. Builds use native hosted runners
 ([runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)).
 Linux artifacts are built on Ubuntu 24.04. CI checks compilation and offline

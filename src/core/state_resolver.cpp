@@ -13,7 +13,7 @@
 // CFG forward (<= 20 visited blocks) to the goto-to-dispatcher block it reaches,
 // guarding against the state register being overwritten on the way.
 //
-// NOTE: IDA SDK 9.4 has no m_cmov opcode (conditional selects are lowered to
+// NOTE: IDA SDK 9.5 has no m_cmov opcode (conditional selects are lowered to
 // m_jcnd), so the Python CMOV branch has no analogue here. The set-valued
 // register environment is kept intact because the multi-predecessor merge below
 // still relies on it to detect ambiguity.

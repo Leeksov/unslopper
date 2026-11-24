@@ -35,7 +35,7 @@ constant indices or fixed pointer slot, aligned in-range targets, branch
 encoding, and the absence of native direct/table entries into the middle of
 a selector slice. It refuses partial coverage.
 
-Build Unslopper with IDA SDK 9.4. In IDA, first disable autoanalysis, open the
+Build Unslopper with IDA SDK 9.5. In IDA, first disable autoanalysis, open the
 matching IDB, and run from the IDAPython console:
 
 ```python

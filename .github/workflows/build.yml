@@ -47,11 +47,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Checkout public IDA SDK 9.4
+      - name: Checkout public IDA SDK 9.5
         uses: actions/checkout@v4
         with:
           repository: HexRaysSA/ida-sdk
-          ref: 2a9143f2f4abd7f54fe20d1e40fb68391d19c4cb
+          ref: 04c0a982c80fd08388e7a3c26ff711fc1c38344d
           path: .sdk
           persist-credentials: false
       - name: Install Linux build tools
@@ -70,15 +70,15 @@ jobs:
       - name: Package
         shell: bash
         env:
-          PACKAGE_NAME: unslopper-ida94-${{ matrix.platform }}-${{ matrix.arch }}
+          PACKAGE_NAME: unslopper-ida95-${{ matrix.platform }}-${{ matrix.arch }}
         run: |
           cp README.md package/
-          printf 'Commit: %s\nSDK: %s\nHost: %s/%s\n' "$GITHUB_SHA" '2a9143f2f4abd7f54fe20d1e40fb68391d19c4cb' "$RUNNER_OS" "$RUNNER_ARCH" > package/BUILD.txt
+          printf 'Commit: %s\nSDK: %s\nHost: %s/%s\n' "$GITHUB_SHA" '04c0a982c80fd08388e7a3c26ff711fc1c38344d' "$RUNNER_OS" "$RUNNER_ARCH" > package/BUILD.txt
           cmake -E tar cf "$PACKAGE_NAME.zip" --format=zip -- package
       - uses: actions/upload-artifact@v4
         with:
-          name: unslopper-ida94-${{ matrix.platform }}-${{ matrix.arch }}
-          path: unslopper-ida94-*.zip
+          name: unslopper-ida95-${{ matrix.platform }}-${{ matrix.arch }}
+          path: unslopper-ida95-*.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -91,7 +91,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: unslopper-ida94-*
+          pattern: unslopper-ida95-*
           path: dist
           merge-multiple: true
       - name: Publish release archives
