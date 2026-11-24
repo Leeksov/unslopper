@@ -3,12 +3,11 @@
 # the plugin (isolated IDAUSR dirs), then diff goto/switch/line metrics.
 set -u
 IDAT="${IDAT:-/Applications/IDA Professional 9.5.app/Contents/MacOS/idat}"
-ROOT="<local-test-repo>"
-DY="<local-plugin>"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DY="${DY:?Set DY to the path of the plugin dylib to test}"
 HARNESS="$ROOT/tests/harness.py"
-SAMPLES="$ROOT/samples"
-WORK="$ROOT/tests/work"
-LIC="$HOME/.idapro/IDA_LICENSE_FILE"
+SAMPLES="${SAMPLES:-$ROOT/samples}"
+WORK="${WORK:-$ROOT/tests/work}"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 

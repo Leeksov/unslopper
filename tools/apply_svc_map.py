@@ -17,9 +17,13 @@ def _num(r):
 def apply(map_path=None):
     import os
     if map_path is None:
-        for c in ("<local-svc-map>",
-                  os.path.join(os.path.dirname(__file__),"..","evidence","mvg_svc_map.json")):
+        script_dir = os.path.dirname(globals().get("__file__", os.path.join(os.getcwd(), "tools", "apply_svc_map.py")))
+        for c in (os.environ.get("MVG_SVC_MAP"),
+                  os.path.join(script_dir,"..","evidence","mvg_svc_map.json")):
+            if not c: continue
             if os.path.exists(c): map_path=c; break
+    if map_path is None:
+        raise FileNotFoundError("Pass map_path or set MVG_SVC_MAP to the syscall map JSON path")
     d=json.load(open(map_path))
     recs=d["records"]; base=0  # __TEXT vmaddr=0 -> rva==ea
     hint={-47:"mach_msg2_trap",-31:"mach_msg_trap",-28:"task_self_trap",-14:"mach_vm_protect_trap",

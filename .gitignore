@@ -37,7 +37,7 @@
 # CI SDK checkout and packaged builds
 /.sdk/
 /package/
-/unslopper-ida94-*.zip
+/unslopper-ida95-*.zip
 *.dll
 *.pdb
 *.lib

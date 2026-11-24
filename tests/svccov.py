@@ -1,7 +1,12 @@
-import ida_hexrays, ida_auto, ida_pro, idaapi, idc, ida_funcs, json
+import ida_hexrays, ida_auto, ida_pro, idaapi, idc, ida_funcs, json, os
 ida_auto.auto_wait(); ida_hexrays.init_hexrays_plugin()
 idaapi.load_and_run_plugin("unslopper",2)
-m=json.load(open("<local-svc-map>"))
+script_dir = os.path.dirname(globals().get("__file__", os.path.join(os.getcwd(), "tests", "svccov.py")))
+map_path = os.environ.get("MVG_SVC_MAP") or os.path.join(script_dir, "..", "evidence", "mvg_svc_map.json")
+if not os.path.isfile(map_path):
+    raise FileNotFoundError("Set MVG_SVC_MAP to the syscall map JSON path")
+with open(map_path) as map_file:
+    m = json.load(map_file)
 recs=[r for r in m["records"] if r.get("resolved")][:15]
 hit=0; tot=0
 for r in recs:

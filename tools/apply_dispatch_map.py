@@ -15,9 +15,13 @@ except Exception: pass
 
 def apply(map_path=None):
     if map_path is None:
-        for c in ("<local-dispatch-map>",
-                  os.path.join(os.path.dirname(__file__),"..","evidence","mvg_rasp_dispatch_map.json")):
+        script_dir = os.path.dirname(globals().get("__file__", os.path.join(os.getcwd(), "tools", "apply_dispatch_map.py")))
+        for c in (os.environ.get("MVG_DISPATCH_MAP"),
+                  os.path.join(script_dir,"..","evidence","mvg_rasp_dispatch_map.json")):
+            if not c: continue
             if os.path.exists(c): map_path=c; break
+    if map_path is None:
+        raise FileNotFoundError("Pass map_path or set MVG_DISPATCH_MAP to the dispatch map JSON path")
     d=json.load(open(map_path))
     base=d.get("image_base",0)  # __TEXT vmaddr=0 -> rva==ea (image_base==0)
     uses=d.get("direct_slot_uses",[])
