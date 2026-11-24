@@ -2,10 +2,12 @@
 """Independent native-byte checks for the read-only Valu ARM32 audit.
 
 Usage: python3 tests/test_promon_thumb_audit.py /path/to/stage2_plus_data.so
+For unittest discovery, set UNSLOPPER_PROMON_SAMPLE to run these checks.
 The target image is deliberately not copied into this repository.
 """
 
 import hashlib
+import os
 import pathlib
 import sys
 import unittest
@@ -38,38 +40,40 @@ def fnv64(data):
 
 
 def load_sample():
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: test_promon_thumb_audit.py /path/to/stage2_plus_data.so")
-    path = pathlib.Path(sys.argv[1])
-    sys.argv[:] = sys.argv[:1]
-    return path.read_bytes()
-
-
-SAMPLE = load_sample()
+    path = os.environ.get("UNSLOPPER_PROMON_SAMPLE")
+    if path is None:
+        raise unittest.SkipTest("Promon sample not supplied; set UNSLOPPER_PROMON_SAMPLE")
+    return pathlib.Path(path).read_bytes()
 
 
 class PromonThumbAuditTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.sample = load_sample()
+
     def test_exact_sample_and_byte_windows(self):
-        self.assertEqual(sha256(SAMPLE), EXPECTED_SHA256)
+        sample = self.sample
+        self.assertEqual(sha256(sample), EXPECTED_SHA256)
         for hub, pred, _, hub_sha, pred_sha, hub_fnv, pred_fnv in SITES:
             with self.subTest(hub=hex(hub)):
-                self.assertEqual(sha256(SAMPLE[hub:hub + 64]), hub_sha)
-                self.assertEqual(sha256(SAMPLE[pred:pred + 24]), pred_sha)
-                self.assertEqual(fnv64(SAMPLE[hub:hub + 64]), hub_fnv)
-                self.assertEqual(fnv64(SAMPLE[pred:pred + 24]), pred_fnv)
-                mutated = bytearray(SAMPLE[hub:hub + 64])
+                self.assertEqual(sha256(sample[hub:hub + 64]), hub_sha)
+                self.assertEqual(sha256(sample[pred:pred + 24]), pred_sha)
+                self.assertEqual(fnv64(sample[hub:hub + 64]), hub_fnv)
+                self.assertEqual(fnv64(sample[pred:pred + 24]), pred_fnv)
+                mutated = bytearray(sample[hub:hub + 64])
                 mutated[0] ^= 1
                 self.assertNotEqual(sha256(mutated), hub_sha)
                 self.assertNotEqual(fnv64(mutated), hub_fnv)
 
-        self.assertEqual(fnv64(SAMPLE[0x451E40:0x451E80]), 0x90A3968796FE47D7)
-        self.assertEqual(fnv64(SAMPLE[0x4657E8:0x465818]), 0xF4D1011491654268)
+        self.assertEqual(fnv64(sample[0x451E40:0x451E80]), 0x90A3968796FE47D7)
+        self.assertEqual(fnv64(sample[0x4657E8:0x465818]), 0xF4D1011491654268)
 
     def test_thumb_state_backedges_and_comparison_tree(self):
+        sample = self.sample
         decoder = Cs(CS_ARCH_ARM, CS_MODE_THUMB)
         for hub, pred, state, _, _, _, _ in SITES:
             with self.subTest(hub=hex(hub)):
-                pred_insns = list(decoder.disasm(SAMPLE[pred:pred + 24], pred))
+                pred_insns = list(decoder.disasm(sample[pred:pred + 24], pred))
                 low = next(i for i in pred_insns if i.mnemonic == "movw" and i.op_str.startswith("r0,"))
                 high = next(i for i in pred_insns if i.mnemonic == "movt" and i.op_str.startswith("r0,"))
                 low_half = int(low.op_str.rsplit("#", 1)[1], 16)
@@ -78,11 +82,14 @@ class PromonThumbAuditTest(unittest.TestCase):
                 self.assertTrue(any(i.mnemonic == "b.w" and i.op_str == f"#{hub:#x}"
                                     for i in pred_insns))
 
-                hub_insns = list(decoder.disasm(SAMPLE[hub:hub + 64], hub))
+                hub_insns = list(decoder.disasm(sample[hub:hub + 64], hub))
                 self.assertTrue(any(i.mnemonic == "cmp" for i in hub_insns[:10]))
                 self.assertTrue(any(i.mnemonic.startswith("b") and i.mnemonic != "b"
                                     for i in hub_insns[:10]))
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: test_promon_thumb_audit.py /path/to/stage2_plus_data.so")
+    os.environ["UNSLOPPER_PROMON_SAMPLE"] = sys.argv.pop(1)
     unittest.main()
