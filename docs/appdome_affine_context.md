@@ -1,5 +1,12 @@
 # Affine jump-table context recovery (experimental)
 
+**Current status: disabled.** A final-MBA audit found a memory-store origin
+present in the unmodified decompilation but absent after context expansion
+(`0x2C2F50` in function `0x2C2E50`). Until its reachability and effect are
+proved, `UNSLOP_AFFINE_CONTEXT=1` does not invoke this rewrite in the plugin.
+The results below describe an earlier isolated experiment, not a currently
+enabled feature.
+
 Unslopper can analyze an Appdome-marked ARM64 `libloader` whose SHA-256 is
 `aa4ba77dc142c944b64fdbd8d3fb83a38b7e7200b13cb79422dc9da88cf10970`.
 The observed protection has a 32-bit state register and a jump-table selector
@@ -7,8 +14,8 @@ such as `xdu(w9 - constant)`. Some dispatchers also copy registers and update
 the state before the branch. A direct predecessor-to-case edge would skip those
 instructions, so the ordinary jump-table rewriter declines these functions.
 
-Set `UNSLOP_AFFINE_CONTEXT=1` before starting IDA to opt in to the context
-path. It recognizes an exact `m_xdu(m_add/sub(raw32, immediate32))` selector
+The isolated trial used `UNSLOP_AFFINE_CONTEXT=1` before starting IDA. Its
+context path recognizes an exact `m_xdu(m_add/sub(raw32, immediate32))` selector
 and builds a bounded graph of `(original block, known state facts)` contexts.
 Each context clones the **complete** original block; a dispatcher clone keeps
 every pre-branch instruction and replaces only its proven `m_jtbl` target with

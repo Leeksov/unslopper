@@ -154,13 +154,9 @@ int UnslopperOptblock::run_pipeline(mba_t *mba, bool *definitely_not_cff)
   // CFF and are worth re-attempting).
   *definitely_not_cff = false;
 
-  StackJtblDiagnostics affine_context_report;
-  int affine_context_changes = unflatten_affine_context_jtbl(mba, &affine_context_report);
-  if ( affine_context_changes > 0 )
-  {
-    diagnostics[mba->entry_ea].stack = affine_context_report;
-    return affine_context_changes;
-  }
+  // Temporarily disabled: a final-MBA audit found an unproven missing store
+  // after affine context expansion. Keep the implementation for review, but
+  // never invoke it from the production optimizer until effects are resolved.
 
   StackJtblDiagnostics stack_report;
   int stack_changes = unflatten_stack_jtbl(mba,&stack_report);
