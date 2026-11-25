@@ -55,6 +55,10 @@ strict-`verify()`-ed before emission — a deobfuscator must never hand Hex-Rays
 corrupt microcode (that aborts IDA with an INTERR). Across all verified runs:
 **0 INTERR**.
 
+The emulated CFG rewriter also checks a detached microcode trial and keeps the
+original graph unless every dispatcher block becomes unreachable. See the
+[postcondition and its measured limits](docs/emulated_dispatcher_postcondition.md).
+
 ---
 
 ## Build

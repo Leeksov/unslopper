@@ -32,6 +32,10 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror tests/test_jtbl_affine.cpp -o "$RUNNER_TEMP/test_jtbl_affine"
           "$RUNNER_TEMP/test_jtbl_affine"
+      - name: Test dispatcher removal postcondition
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror tests/test_dispatcher_postcondition.cpp -o "$RUNNER_TEMP/test_dispatcher_postcondition"
+          "$RUNNER_TEMP/test_dispatcher_postcondition"
 
   build:
     name: ${{ matrix.platform }}-${{ matrix.arch }}

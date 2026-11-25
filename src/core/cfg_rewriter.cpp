@@ -14,6 +14,7 @@
 #include "cfg_rewriter.h"
 #include "state_resolver.h"
 #include "history_tracker.h"
+#include "dispatcher_postcondition.h"
 #include "block_dup.h"
 #include "dispatcher.h"
 #include "profile.h"
@@ -23,6 +24,7 @@
 #include <vector>
 #include <set>
 #include <deque>
+#include <memory>
 #include <cstdlib>
 
 namespace unslop {
@@ -122,16 +124,13 @@ bool insertion_ops_enabled()
   return true;
 }
 
-// COMMIT GUARD (STEP-5 of the plan). A half-rewritten dispatcher - some direct
-// edges, some still state-machine edges over a still-live compare tree - is
-// HARDER for Hex-Rays than a fully-flattened one, which is the regression the
-// corpus showed (49D804 1->183, 1AC300 2->101, ...). The guard is a pure,
-// NON-mutating feasibility pre-pass: unless the resolution phases would drive
-// the dispatcher entry to zero surviving real predecessors (so DCE removes the
-// tree), we leave the function FULLY FLATTENED - byte-for-byte the OFF baseline
-// as far as the CFG rewrite is concerned - rather than emit a regressed shape.
-// This is what makes the register-BST rewrite safe to default ON: it can only
-// improve-or-hold, never shred. Default ON; opt out with UNSLOP_NO_GUARD=1.
+// COMMIT GUARD. A half-rewritten dispatcher - some direct edges, some still
+// state-machine edges over a live comparison tree - can make F5 harder to read
+// (49D804 1->183 gotos, 1AC300 2->101, ...). The cheap non-mutating pre-pass
+// predicts whether resolution will disconnect the dispatcher. A detached MBA
+// trial later checks the actual final reachability before live edits. Neither
+// condition guarantees prettier pseudocode or semantic equivalence on its own.
+// Default ON; opt out only for diagnostics with UNSLOP_NO_GUARD=1.
 bool commit_guard_enabled()
 {
   qstring env;
@@ -339,8 +338,8 @@ int entry_fallthrough_pred(mba_t *mba, const DispatcherInfo &di)
 // regression (9 -> 21 gotos). A father that resolves with little or no
 // duplication (0x352CD4 needed 1) produces a genuinely simpler graph and wins
 // (5 -> 3). So we commit only when the whole function resolves within the
-// budget; otherwise we leave it flattened (never worse than OFF). The budget is
-// deliberately conservative and errs toward "keep flattened".
+// budget; otherwise leave its CFG flattened. This is a heuristic pre-pass;
+// the detached postcondition validates the actual rewritten graph.
 bool emulated_will_fully_resolve(mba_t *mba, const DispatcherInfo &di,
                                  bool do_insertion)
 {
@@ -507,18 +506,15 @@ void step_verify_emu(mba_t *mba, const char *step)
 //-------------------------------------------------------------------------
 // Emulated-BST multi-pass driver. Returns total changes (edges + splits + dups
 // + pruned). Does NOT verify / mark_chains_dirty (plugin owns those).
-int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
+static int rewrite_cfg_emulated_impl(mba_t *mba, DispatcherInfo *di)
 {
   int total = 0;
   const int MAX_PASSES = 16;
   const int MAX_DUP_PASSES = 200;
   bool do_insertion = insertion_ops_enabled();
 
-  // ── COMMIT GUARD (STEP 5): unless the resolution phases below would drive
-  //    the dispatcher entry to zero surviving real predecessors, leave the
-  //    function fully flattened rather than emit a half-rewritten (regressed)
-  //    dispatcher. Returning 0 here does NOT mutate the mba, so the output is
-  //    the original flattened form - never worse than the OFF baseline. ──
+  // ── CHEAP PREFLIGHT: a failed prediction leaves this MBA unchanged. A
+  //    successful prediction still requires the detached final-CFG check. ──
   if ( commit_guard_enabled() )
   {
     // A trivially small comparison tree (only a handful of nodes) is one that
@@ -853,6 +849,75 @@ int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
   step_verify_emu(mba, "prune");
 
   return total;
+}
+
+// The feasibility pre-pass is intentionally cheap and conservative, but it
+// cannot predict every edge introduced by Hex-Rays' later block splitting.
+// Verify the *actual* final CFG on a detached MBA before touching the live one.
+static bool rewritten_dispatcher_unreachable(mba_t *mba,
+                                              const DispatcherInfo &di)
+{
+  if ( mba == nullptr || mba->qty <= 0 )
+    return false;
+  std::vector<std::vector<int>> successors(size_t(mba->qty));
+  for ( int i = 0; i < mba->qty; ++i )
+  {
+    mblock_t *block = mba->get_mblock(i);
+    if ( block == nullptr )
+      return false;
+    for ( int j = 0; j < block->nsucc(); ++j )
+      successors[size_t(i)].push_back(block->succ(j));
+  }
+  std::vector<int> dispatcher(di.dispatcher_blocks.begin(),
+                              di.dispatcher_blocks.end());
+  if ( dispatcher.empty() )
+    dispatcher.push_back(di.block_idx);
+  return dispatcher_unreachable_from_entry(successors, dispatcher);
+}
+
+static int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
+{
+  if ( mba == nullptr || di == nullptr )
+    return 0;
+  // UNSLOP_NO_GUARD is an explicit diagnostic override of both preflight and
+  // postcondition. The default production path always checks both.
+  if ( !commit_guard_enabled() )
+    return rewrite_cfg_emulated_impl(mba, di);
+
+  int trial_changes = 0;
+  try
+  {
+    bytevec_t serialized;
+    mba->serialize(&serialized);
+    std::unique_ptr<mba_t> trial(
+        mba_t::deserialize(serialized.begin(), serialized.size()));
+    if ( trial == nullptr )
+      return 0;
+    DispatcherInfo trial_di = *di;
+    trial_changes = rewrite_cfg_emulated_impl(trial.get(), &trial_di);
+    if ( trial_changes <= 0 )
+      return 0;
+    trial->verify(true);
+    if ( !rewritten_dispatcher_unreachable(trial.get(), trial_di) )
+    {
+      DLOG(L_INFO, "commit guard: dispatcher remains reachable after trial; "
+                   "original CFG retained");
+      return 0;
+    }
+  }
+  catch ( ... )
+  {
+    DLOG(L_WARN, "commit guard: detached MBA trial rejected; original CFG retained");
+    return 0;
+  }
+
+  // The detached and live inputs are identical. If this deterministic replay
+  // ever diverges, fail-stop instead of silently emitting a partially edited
+  // live MBA; the verifier cannot roll back an in-place mutation.
+  const int live_changes = rewrite_cfg_emulated_impl(mba, di);
+  QASSERT(59992, live_changes == trial_changes
+                    && rewritten_dispatcher_unreachable(mba, *di));
+  return live_changes;
 }
 
 //-------------------------------------------------------------------------
