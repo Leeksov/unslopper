@@ -526,12 +526,17 @@ int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
     // deflattening it has NO upside and can only add an edge or two - a small
     // but real regression (the 0x313920 3-node case: OFF 0 gotos -> 1). Skip
     // it: keep the function flattened and let Hex-Rays handle the tiny switch.
-    const size_t MIN_DEFLAT_TREE = 4;   // < 4 comparison nodes: not worth it
-    if ( di->dispatcher_blocks.size() < MIN_DEFLAT_TREE )
+    const size_t MIN_DEFLAT_TREE = 4;   // < 4 comparison nodes/cases: not worth it
+    // A jump table is one dispatcher block regardless of how many states it
+    // handles. Count its proven cases instead of rejecting it as a tiny BST.
+    const size_t dispatcher_span = di->detection_strategy == 2
+                                 ? di->state_map.size()
+                                 : di->dispatcher_blocks.size();
+    if ( dispatcher_span < MIN_DEFLAT_TREE )
     {
-      DLOG(L_INFO, "commit guard: tree too small (%d nodes) to benefit from "
+      DLOG(L_INFO, "commit guard: dispatcher too small (%d nodes/cases) to benefit from "
                    "deflattening; leaving flattened",
-           int(di->dispatcher_blocks.size()));
+           int(dispatcher_span));
       return 0;
     }
     if ( !emulated_will_fully_resolve(mba, *di, do_insertion) )

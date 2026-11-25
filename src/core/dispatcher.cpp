@@ -9,11 +9,13 @@
 #include "dispatcher.h"
 #include "microcode_utils.h"
 #include "unslop_log.h"
+#include "jtbl_affine.h"
 
 #include <algorithm>
 #include <deque>
 #include <set>
 #include <map>
+#include <utility>
 #include <vector>
 
 namespace unslop {
@@ -1164,6 +1166,25 @@ static bool detect_emulated_dispatcher(mba_t *mba, DispatcherInfo *out,
 // Sets di's carrier fields (sel_state_reg / sel_state_sel / sel_state_addr) to
 // that source so block_installed_state can find the per-case installs. Returns
 // true if a concrete carrier was identified.
+static bool match_affine_jtbl_def(const minsn_t *def, mreg_t *raw_reg,
+                                  int64_t *add)
+{
+  if ( def == nullptr || raw_reg == nullptr || add == nullptr )
+    return false;
+  const minsn_t *expr = def;
+  if ( def->opcode == m_xdu && def->l.t == mop_d && def->l.d != nullptr
+    && def->l.size == 4 && def->d.size == 8 )
+    expr = def->l.d;
+  if ( (expr->opcode != m_sub && expr->opcode != m_add)
+    || expr->l.t != mop_r || expr->l.size != 4
+    || !is_num(&expr->r) || expr->r.size != 4 )
+    return false;
+  const uint32_t c = uint32_t(num_val(&expr->r));
+  *raw_reg = expr->l.r;
+  *add = expr->opcode == m_sub ? -int64_t(c) : int64_t(c);
+  return true;
+}
+
 static bool trace_jtbl_carrier(mba_t *mba, int jtbl_serial, mreg_t selreg,
                                DispatcherInfo *di)
 {
@@ -1179,9 +1200,29 @@ static bool trace_jtbl_carrier(mba_t *mba, int jtbl_serial, mreg_t selreg,
         def = ins;                     // keep the LAST def before the tail
     if ( def != nullptr )
     {
+      // Appdome-style switches may index the table with a zero-extended
+      // 32-bit affine selector, e.g. xdu(state - #C) -> selector. The case
+      // blocks install the *raw* state, not the zero-based table index. Only
+      // accept the exact, anchored expression feeding this jtbl selector.
+      mreg_t raw_reg = mreg_t(-1);
+      int64_t add = 0;
+      if ( match_affine_jtbl_def(def, &raw_reg, &add) )
+      {
+        di->sel_state_reg = raw_reg;
+        di->sel_state_sel = mop_t();
+        di->sel_state_addr = mop_t();
+        di->sel_mem_state = false;
+        di->sel_xor_key = 0;
+        di->sel_add = add;
+        di->jtbl_affine_proven = true;
+        DLOG(L_INFO, "jump-table affine selector: state_reg=%d add=%lld",
+             int(di->sel_state_reg), (long long)di->sel_add);
+        return true;
+      }
       // ldx sel,addr -> want : memory carrier.
       if ( def->opcode == m_ldx )
       {
+        di->sel_mem_state = true;
         di->sel_state_reg = mreg_t(-1);
         di->sel_state_sel = def->l;    // selector (e.g. cs)
         di->sel_state_addr = def->r;   // address (e.g. x19+off)
@@ -1190,6 +1231,7 @@ static bool trace_jtbl_carrier(mba_t *mba, int jtbl_serial, mreg_t selreg,
       // mov %stkvar -> want : stack carrier.
       if ( def->opcode == m_mov && def->l.t == mop_S )
       {
+        di->sel_mem_state = true;
         di->sel_state_reg = mreg_t(-1);
         di->sel_state_sel = def->l;    // the mop_S itself
         di->sel_state_addr = mop_t();  // empty
@@ -1212,6 +1254,75 @@ static bool trace_jtbl_carrier(mba_t *mba, int jtbl_serial, mreg_t selreg,
     cur = blk->pred(0);
   }
   return false;
+}
+
+// Replacing a goto-to-jtbl with a direct case edge skips every instruction
+// in the dispatcher block. That is valid only when the block is a pure branch
+// (or computes an otherwise-dead selector). In particular, Appdome-style
+// dispatchers can update ordinary live registers *after* computing the switch
+// index; an exact state map does not make those writes safe to skip.
+static bool pure_jtbl_dispatcher(mba_t *mba, int serial,
+                                 const DispatcherInfo &di)
+{
+  if ( mba == nullptr || serial < 0 || serial >= mba->qty )
+    return false;
+  mblock_t *blk = mba->get_mblock(serial);
+  if ( blk == nullptr || blk->tail == nullptr || blk->tail->opcode != m_jtbl )
+    return false;
+  if ( blk->tail->l.t != mop_r && blk->tail->l.t != mop_S )
+    return false;
+
+  std::vector<JtblInstruction> shape;
+  for ( minsn_t *ins = blk->head; ins != nullptr; ins = ins->next )
+  {
+    if ( ins == blk->tail )
+    {
+      shape.push_back(JtblInstruction::Branch);
+      continue;
+    }
+    if ( ins->opcode == m_nop )
+    {
+      shape.push_back(JtblInstruction::Nop);
+      continue;
+    }
+    mreg_t raw_reg = mreg_t(-1);
+    int64_t add = 0;
+    if ( di.jtbl_affine_proven
+      && ins->d.t == mop_r && ins->d.r == di.sel_reg_cmp
+      && match_affine_jtbl_def(ins, &raw_reg, &add)
+      && raw_reg == di.sel_state_reg && add == di.sel_add )
+    {
+      shape.push_back(JtblInstruction::ExactAffineSelector);
+      continue;
+    }
+    shape.push_back(JtblInstruction::Other);
+  }
+  if ( !pure_jtbl_shape(shape, di.jtbl_affine_proven, false) )
+    return false;
+  if ( !di.jtbl_affine_proven )
+    return true; // the jtbl is the block's only non-NOP instruction
+
+  // The affine selector computation is skipped on a direct edge. Its result
+  // must not be read outside the dispatcher, including inside nested mops.
+  if ( blk->tail->l.t != mop_r || blk->tail->l.r != di.sel_reg_cmp
+    || blk->tail->l.size <= 0 || blk->tail->l.size > 8 )
+    return false;
+  for ( int b = 0; b < mba->qty; ++b )
+  {
+    if ( b == serial )
+      continue;
+    mblock_t *other = mba->get_mblock(b);
+    if ( other == nullptr )
+      return false;
+    for ( minsn_t *ins = other->head; ins != nullptr; ins = ins->next )
+    {
+      mlist_t uses = other->build_use_list(*ins, MAY_ACCESS);
+      for ( int byte = 0; byte < blk->tail->l.size; ++byte )
+        if ( uses.has(mreg_t(di.sel_reg_cmp + byte)) )
+          return false;
+    }
+  }
+  return true;
 }
 
 static bool detect_jump_table(mba_t *mba, DispatcherInfo *out,
@@ -1294,8 +1405,7 @@ static bool detect_jump_table(mba_t *mba, DispatcherInfo *out,
       out->sel_state_reg = out->state_reg;
       out->sel_state_sel = mop_t();
       out->sel_state_addr = mop_t();
-      if ( trace_jtbl_carrier(mba, i, out->state_reg, out) )
-        out->sel_mem_state = true;     // carrier resolved to mem/stack
+      trace_jtbl_carrier(mba, i, out->state_reg, out);
       carrier_ok = true;
     }
     else if ( out->state_var.t == mop_S )
@@ -1314,15 +1424,21 @@ static bool detect_jump_table(mba_t *mba, DispatcherInfo *out,
     }
     if ( carrier_ok )
     {
+      // The m_jtbl cases are selector values. The emulated rewriter instead
+      // consumes the raw constants installed by case blocks, so invert the
+      // proven 32-bit selector transform before building its state map.
+      std::map<uint64_t, int> raw_map;
+      const bool raw_map_ok = invert_jtbl_cases(
+          sm, out->sel_xor_key, out->sel_add, &raw_map);
       out->block_state.clear();
       int installs = 0;
-      for ( int b = 0; b < mba->qty; ++b )
+      for ( int b = 0; raw_map_ok && b < mba->qty; ++b )
       {
         if ( b == i )
           continue;                    // skip the jtbl block itself
         uint64_t k = 0;
         if ( block_installed_state(mba, b, out, regmap, &k)
-          && out->state_map.count(k) != 0 )
+          && raw_map.count(k) != 0 )
         {
           out->block_state[b] = k;
           ++installs;
@@ -1336,11 +1452,23 @@ static bool detect_jump_table(mba_t *mba, DispatcherInfo *out,
         // to the crash-safe emulated driver. Opt out with UNSLOP_REGBST=0.
         rb2 = (qgetenv("UNSLOP_REGBST", &ev) && atoi(ev.c_str()) == 0) ? 0 : 1;
       }
-      if ( rb2 != 0 && installs >= 2 )
+      const bool pure = pure_jtbl_dispatcher(mba, i, *out);
+      if ( rb2 != 0 && raw_map_ok && installs >= 2 && pure )
       {
+        out->state_map = std::move(raw_map);
+        out->state_consts.clear();
+        for ( const auto &entry : out->state_map )
+          out->state_consts.insert(entry.first);
         out->emulated = true;
         DLOG(L_INFO, "jump-table bridged to emulated driver: %d installs, %d cases",
              installs, int(out->state_map.size()));
+      }
+      else
+      {
+        out->block_state.clear();
+        if ( !pure )
+          DLOG(L_INFO, "jump-table state map is audit-only: dispatcher has "
+                       "unproven side effects or live selector");
       }
     }
     return true;

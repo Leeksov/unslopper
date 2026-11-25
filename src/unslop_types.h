@@ -79,6 +79,7 @@ struct DispatcherInfo
   // uses it directly and does NOT re-apply any profile transform.
   std::map<int, uint64_t> block_state;
   bool emulated = false;                 // state_map came from BST emulation
+  bool jtbl_affine_proven = false;       // exact 32-bit affine selector
 };
 
 } // namespace unslop

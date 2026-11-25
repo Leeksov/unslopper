@@ -253,6 +253,26 @@ int UnslopperOptblock::run_pipeline(mba_t *mba, bool *definitely_not_cff)
        di.detection_strategy, di.block_idx, int(di.state_reg),
        int(di.state_map.size()), int(di.dispatcher_blocks.size()));
 
+  // The Promon profile models a comparison-tree dispatcher. Its broad
+  // pre-detection may also match an unrelated function containing a switch
+  // and ordinary range/equality conditions. Never let it reinterpret a
+  // proven m_jtbl state map as a Promon BST (configure() replaces that map).
+  if ( profile != nullptr && profile->kind() == ProfileKind::PROMON
+    && di.detection_strategy == 2 )
+  {
+    DLOG(L_INFO, "ignore Promon profile on jump-table dispatcher");
+    profile = nullptr;
+  }
+  if ( di.detection_strategy == 2 && !di.emulated )
+  {
+    // A direct case edge bypasses every instruction in the jtbl block.
+    // Without the exact carrier and purity proofs, even the opt-in legacy
+    // rewriter must leave that dispatcher in place.
+    DLOG(L_INFO, "jump-table remains analysis-only; no safe CFG rewrite");
+    *definitely_not_cff = true;
+    return 0;
+  }
+
   // Route each rewriter to the maturity where its mutations are valid:
   //   - emulated D-810 path  -> GLBOPT1/GLBOPT2 (structurer runs after)
   //   - register/legacy path -> LOCOPT only (corrupts GLBOPT microcode)
