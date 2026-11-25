@@ -7,6 +7,7 @@
 // plus a jump-table seed (Strategy 2) and a whole-array state-var scan
 // (Strategy 3) that reuse the same state_var / state_map machinery.
 #include "dispatcher.h"
+#include "bst_safety.h"
 #include "microcode_utils.h"
 #include "unslop_log.h"
 #include "jtbl_affine.h"
@@ -622,13 +623,9 @@ static inline bool is_tree_cond(mcode_t op)
 // Tail conditional of a block, if it is a direct compare with a block target.
 static const minsn_t *tail_cond(const mblock_t *blk)
 {
-  const minsn_t *last = nullptr;
-  for ( const minsn_t *ins = blk->head; ins != nullptr; ins = ins->next )
-  {
-    if ( is_tree_cond(ins->opcode) && ins->d.t == mop_b )
-      last = ins;
-  }
-  return last;
+  const minsn_t *tail = blk == nullptr ? nullptr : blk->tail;
+  return tail != nullptr && is_tree_cond(tail->opcode)
+      && tail->d.t == mop_b ? tail : nullptr;
 }
 
 // Is `serial` a comparison node of the tree: it ends in a direct conditional
@@ -637,8 +634,17 @@ static bool is_cmp_node(mba_t *mba, int serial, mreg_t sel)
 {
   if ( serial < 0 || serial >= mba->qty )
     return false;
-  const minsn_t *c = tail_cond(mba->get_mblock(serial));
+  const mblock_t *blk = mba->get_mblock(serial);
+  const minsn_t *c = tail_cond(blk);
   if ( c == nullptr )
+    return false;
+  int fallthrough = -1;
+  for ( int j = 0; j < blk->nsucc(); ++j )
+    if ( blk->succ(j) != c->d.b )
+      fallthrough = blk->succ(j);
+  if ( !blk->succset.has(c->d.b)
+    || !bst_terminal_branch_shape(c == blk->tail, blk->nsucc(), c->d.b,
+                                  fallthrough, serial + 1) )
     return false;
   if ( c->l.t == mop_r && c->l.r == sel ) return true;
   if ( c->r.t == mop_r && c->r.r == sel ) return true;
@@ -650,7 +656,7 @@ static bool is_cmp_node(mba_t *mba, int serial, mreg_t sel)
 static int follow_goto_chain(mba_t *mba, int serial, int depth = 0)
 {
   if ( depth > 16 || serial < 0 || serial >= mba->qty )
-    return serial;
+    return -1;
   mblock_t *b = mba->get_mblock(serial);
   if ( b->head != nullptr
     && b->head->next == nullptr
@@ -660,6 +666,25 @@ static int follow_goto_chain(mba_t *mba, int serial, int depth = 0)
     return follow_goto_chain(mba, b->head->l.b, depth + 1);
   }
   return serial;
+}
+
+static bool tree_owned_predecessor(mba_t *mba, int serial,
+                                   const std::set<int> &tree_nodes,
+                                   std::set<int> *seen)
+{
+  if ( tree_nodes.count(serial) != 0 )
+    return true;
+  if ( !seen->insert(serial).second || seen->size() > 16 )
+    return false;
+  mblock_t *b = mba->get_mblock(serial);
+  if ( b == nullptr || b->head == nullptr || b->head != b->tail
+    || b->head->opcode != m_goto || b->head->l.t != mop_b
+    || b->npred() == 0 )
+    return false;
+  for ( int j = 0; j < b->npred(); ++j )
+    if ( !tree_owned_predecessor(mba, b->pred(j), tree_nodes, seen) )
+      return false;
+  return true;
 }
 
 // Evaluate `lv <op> rv` for a tree conditional. Signed ops use signed 32-bit,
@@ -701,7 +726,7 @@ static int emulate_tree(mba_t *mba, const DispatcherInfo *di,
   {
     mblock_t *blk = mba->get_mblock(cur);
     const minsn_t *c = tail_cond(blk);
-    if ( c == nullptr )
+    if ( c == nullptr || !is_cmp_node(mba, cur, di->sel_reg_cmp) )
       return -1;
 
     // Substitute t for the selector operand, resolve the other as the pivot.
@@ -720,12 +745,7 @@ static int emulate_tree(mba_t *mba, const DispatcherInfo *di,
 
     bool taken = eval_tree_cond(c->opcode, lv, rv);
     int target = c->d.b;
-    int ft = target;
-    for ( int j = 0; j < blk->nsucc(); ++j )
-    {
-      int s = blk->succ(j);
-      if ( s != target ) { ft = s; break; }
-    }
+    int ft = cur + 1;
 
     int nxt = follow_goto_chain(mba, taken ? target : ft);
     if ( tree_nodes.count(nxt) != 0 )
@@ -744,6 +764,19 @@ static bool same_mop(const mop_t *a, const mop_t *b)
   if ( a == nullptr || b == nullptr )
     return false;
   return a->equal_mops(*b, EQ_IGNSIZE);
+}
+
+static bool contains_call(const minsn_t *ins);
+static bool contains_call(const mop_t *m)
+{
+  return m != nullptr && m->t == mop_d && m->d != nullptr
+      && contains_call(m->d);
+}
+static bool contains_call(const minsn_t *ins)
+{
+  return ins != nullptr && (ins->opcode == m_call || ins->opcode == m_icall
+      || contains_call(&ins->l) || contains_call(&ins->r)
+      || contains_call(&ins->d));
 }
 
 } // anonymous namespace
@@ -900,6 +933,23 @@ static bool block_installed_state(mba_t *mba, int serial,
 
   for ( minsn_t *ins = blk->head; ins != nullptr; ins = ins->next )
   {
+    if ( contains_call(ins) || ins->opcode == m_ext )
+    {
+      have = false;
+      local.clear();
+      continue;
+    }
+    if ( ins->d.t == mop_r )
+    {
+      for ( auto it = local.begin(); it != local.end(); )
+      {
+        if ( bst_state_write_overlaps(uint64_t(it->first), 4,
+                                      uint64_t(ins->d.r), ins->d.size) )
+          it = local.erase(it);
+        else
+          ++it;
+      }
+    }
     // Track block-local `mov #imm, reg` so a `mov #K,r; store r` pair resolves.
     if ( ins->opcode == m_mov && is_num(&ins->l) && ins->d.t == mop_r )
       local[ins->d.r] = num_val(&ins->l);
@@ -907,13 +957,15 @@ static bool block_installed_state(mba_t *mba, int serial,
     uint64_t v = 0;
     if ( di->sel_state_reg != mreg_t(-1) )
     {
-      // Register carrier: `mov #K, state_reg` (accept sub-register neighbours).
-      if ( ins->opcode == m_mov && is_num(&ins->l) && ins->d.t == mop_r )
+      // Only an exact 32-bit carrier definition proves its next state. Any
+      // overlapping unknown write kills an earlier constant.
+      if ( ins->d.t == mop_r
+        && bst_state_write_overlaps(uint64_t(di->sel_state_reg), 4,
+                                    uint64_t(ins->d.r), ins->d.size) )
       {
-        mreg_t r = ins->d.r;
-        if ( (r == di->sel_state_reg
-           || r == mreg_t(di->sel_state_reg - 1)
-           || r == mreg_t(di->sel_state_reg + 1)) )
+        have = false;
+        if ( ins->opcode == m_mov && is_num(&ins->l)
+          && ins->d.r == di->sel_state_reg && ins->d.size >= 4 )
         {
           last = num_val(&ins->l); have = true;
         }
@@ -922,6 +974,8 @@ static bool block_installed_state(mba_t *mba, int serial,
     else if ( !di->sel_state_addr.empty() )
     {
       // ldx/stx memory carrier: `stx value, selector, address`.
+      if ( ins->opcode == m_stx )
+        have = false; // an unknown indirect write may alias the state slot
       if ( ins->opcode == m_stx
         && same_mop(&ins->r, &di->sel_state_sel)
         && same_mop(&ins->d, &di->sel_state_addr)
@@ -933,11 +987,21 @@ static bool block_installed_state(mba_t *mba, int serial,
     else if ( !di->sel_state_sel.empty() )
     {
       // Stack-variable carrier: `mov #K, %stackvar` (d is the mop_S itself).
-      if ( ins->opcode == m_mov
-        && same_mop(&ins->d, &di->sel_state_sel)
-        && store_val(&ins->l, &v) )
+      if ( ins->opcode == m_stx )
+        have = false;
+      if ( ins->d.t == mop_S && ins->d.s != nullptr
+        && di->sel_state_sel.t == mop_S && di->sel_state_sel.s != nullptr
+        && bst_state_write_overlaps(uint64_t(di->sel_state_sel.s->off),
+                                    di->sel_state_sel.size,
+                                    uint64_t(ins->d.s->off), ins->d.size) )
       {
-        last = v; have = true;
+        have = false;
+        if ( ins->opcode == m_mov
+          && same_mop(&ins->d, &di->sel_state_sel)
+          && store_val(&ins->l, &v) )
+        {
+          last = v; have = true;
+        }
       }
     }
   }
@@ -978,6 +1042,26 @@ void build_state_map_emulated(mba_t *mba, DispatcherInfo *di,
     }
   }
   di->dispatcher_blocks = tree_nodes;
+  // Internal comparison nodes must have no entry from outside this component.
+  // Otherwise a path can enter mid-tree with a different selector history and
+  // emulating every state from the root does not describe that path.
+  for ( int s : tree_nodes )
+  {
+    if ( s == di->block_idx )
+      continue;
+    mblock_t *b = mba->get_mblock(s);
+    for ( int j = 0; j < b->npred(); ++j )
+    {
+      int pred = b->pred(j);
+      std::set<int> seen;
+      if ( !tree_owned_predecessor(mba, pred, tree_nodes, &seen) )
+      {
+        di->dispatcher_blocks.clear();
+        DLOG(L_INFO, "emulated-BST: external entry into comparison node %d", s);
+        return;
+      }
+    }
+  }
   DLOG(L_INFO, "emulated-BST: %d comparison nodes", int(tree_nodes.size()));
 
   // 2. Per-block raw state constants (case exits + prologue initial state).

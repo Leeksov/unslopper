@@ -19,6 +19,7 @@ set(ENV{IDASDK} "${UNSLOP_SDK_ROOT}")
 include("${_unslop_sdk_init}")
 
 project(unslopper CXX)
+include(CTest)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -79,3 +80,8 @@ target_include_directories(unslopper PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/passes
     ${CMAKE_CURRENT_SOURCE_DIR}/src/profiles
 )
+
+if(BUILD_TESTING)
+    add_executable(test_bst_safety tests/test_bst_safety.cpp)
+    add_test(NAME bst_safety COMMAND test_bst_safety)
+endif()
