@@ -40,6 +40,10 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror tests/test_affine_context_gate.cpp -o "$RUNNER_TEMP/test_affine_context_gate"
           "$RUNNER_TEMP/test_affine_context_gate"
+      - name: Test CFF diagnostic accounting
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror tests/test_cff_activity.cpp -o "$RUNNER_TEMP/test_cff_activity"
+          "$RUNNER_TEMP/test_cff_activity"
 
   build:
     name: ${{ matrix.platform }}-${{ matrix.arch }}

@@ -76,9 +76,16 @@ where the failure predicate was incorrectly reduced to a constant.
 Plugin action 4 prints JSON records prefixed with `[unslop-report]`: function
 EA, stack recovery outcome, original cases/context count, new MBA changes,
 hash matches/folds and last candidate reason, CFG changes, verifier errors,
-and number of SVC carry captures. Records are per plugin/database context
-and reset when the function is freshly decompiled. Hash candidate counts
+and number of SVC carry captures. The original per-function fields reset
+when the function is freshly decompiled. Hash candidate counts
 cover multiple maturities, not unique source call sites.
+`edges` remains the latest decompilation's verified CFG rewrite count.
+`observed_edges` is the largest verified count seen for one decompilation of
+that function during the current plugin session; `observed_changed` is one
+when that count is positive. These additional fields survive a fresh F5
+that produces zero edits, and repeated F5 does not add the same edits again.
+They describe plugin activity, not unique recovered source edges or proof of
+semantic equivalence. Plugin reset clears them.
 
 Tests:
 

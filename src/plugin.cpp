@@ -43,6 +43,7 @@
 #include "virtual_call.h"
 #include "svc_resolver.h"
 #include "verified_jump.h"
+#include "core/cff_activity.h"
 #include "arxan_branches.h"
 #include "genshin.h"
 #include "promon_thumb_audit.h"
@@ -102,6 +103,7 @@ struct UnslopperOptblock : public optblock_t
     int mba=0,hash=0,hash_candidates=0,edges=0,errors=0,svc_flags=0;
   };
   std::map<ea_t,Diagnostics> diagnostics;
+  CffActivity<ea_t> cff_activity; // verified edits observed across repeated F5
 
   // Statistics.
   int stat_deflattened = 0;     // functions with >=1 change
@@ -133,6 +135,7 @@ struct UnslopperOptblock : public optblock_t
     not_cff.clear();
     svc_done.clear();
     diagnostics.clear();
+    cff_activity.clear();
     stat_deflattened = 0;
     stat_changes = 0;
     stat_errors = 0;
@@ -538,6 +541,7 @@ int idaapi UnslopperOptblock::func(mblock_t *blk)
     fname.sprnt("%a", ea);
   stat_changes += changes;
   report.edges+=changes;
+  cff_activity.note_verified(ea, report.edges);
   if ( changes > 0 )
   {
     ++stat_deflattened;
@@ -690,9 +694,11 @@ bool idaapi plugin_ctx_t::run(size_t arg)
     case 4: // Structured per-function diagnostic summaries for this instance.
       for(const auto &row:optimizer.diagnostics) {
         const auto &d=row.second;
-        msg("[unslop-report] {\"ea\":\"0x%llx\",\"stack\":\"%s\",\"cases\":%d,\"contexts\":%d,\"mba\":%d,\"hash\":%d,\"hash_candidates\":%d,\"hash_reason\":\"%s\",\"edges\":%d,\"errors\":%d,\"svc_flags\":%d}\n",
+        int observed_edges=optimizer.cff_activity.observed_edges(row.first);
+        msg("[unslop-report] {\"ea\":\"0x%llx\",\"stack\":\"%s\",\"cases\":%d,\"contexts\":%d,\"mba\":%d,\"hash\":%d,\"hash_candidates\":%d,\"hash_reason\":\"%s\",\"edges\":%d,\"errors\":%d,\"svc_flags\":%d,\"observed_edges\":%d,\"observed_changed\":%d}\n",
             (unsigned long long)row.first,d.stack.reason.c_str(),d.stack.cases,d.stack.contexts,
-            d.mba,d.hash,d.hash_candidates,d.hash_reason.c_str(),d.edges,d.errors,d.svc_flags);
+            d.mba,d.hash,d.hash_candidates,d.hash_reason.c_str(),d.edges,d.errors,d.svc_flags,
+            observed_edges,observed_edges>0?1:0);
         msg("[unslop-arxan] {\"ea\":\"0x%llx\",\"verified\":%d,\"reachable_added\":%d,\"matched\":%d,\"changed\":%d,\"ownership_rejected\":%d,\"entry_rejected\":%d,\"missing_block\":%d}\n",
             (unsigned long long)row.first,d.arxan.verified,d.arxan.reachable_added,d.arxan.matched,d.arxan.changed,
             d.arxan.ownership_rejected,d.arxan.entry_rejected,d.arxan.missing_block);
