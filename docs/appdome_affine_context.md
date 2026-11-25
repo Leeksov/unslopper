@@ -1,9 +1,11 @@
 # Affine jump-table context recovery (experimental)
 
-**Current status: disabled.** A final-MBA audit found a memory-store origin
-present in the unmodified decompilation but absent after context expansion
-(`0x2C2F50` in function `0x2C2E50`). Until its reachability and effect are
-proved, `UNSLOP_AFFINE_CONTEXT=1` does not invoke this rewrite in the plugin.
+**Current status: disabled.** A final-MBA audit found that `m_stx` at
+`0x2C2F50` in function `0x2C2E50` becomes a local-array assignment at the
+same source address after context expansion. The initial opcode-only check
+mistook this for a missing write. A destination/dataflow audit of all edited
+functions is still pending, so `UNSLOP_AFFINE_CONTEXT=1` does not invoke this
+rewrite in the plugin.
 The results below describe an earlier isolated experiment, not a currently
 enabled feature.
 

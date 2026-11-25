@@ -6,7 +6,7 @@
 | Classic OLLVM (sr-tream, Junod) | profiles/ollvm.cpp | done (same scramble32) |
 | Promon SHIELD BST CFF + opaque | profiles/promon.cpp | done |
 | Promon Android ARM32 Thumb CFF + encoded calls (Valu 10.5.3) | core/promon_thumb_audit.cpp (action 40) | read-only, hash-gated audit of two hubs; rewrite not validated |
-| Appdome-associated affine jump-table CFF | core/dispatcher.cpp + core/jtbl_affine.h; disabled context code in core/stack_jtbl.cpp | [exact state-map detection](appdome_affine_jtbl.md) remains available. [Experimental context recovery](appdome_affine_context.md) is disabled after a final-MBA store-origin discrepancy; earlier F5 gains do not establish safe behavior. |
+| Appdome-associated affine jump-table CFF | core/dispatcher.cpp + core/jtbl_affine.h; disabled context code in core/stack_jtbl.cpp | [exact state-map detection](appdome_affine_jtbl.md) remains available. [Experimental context recovery](appdome_affine_context.md) is disabled pending final-MBA destination/dataflow audit; an apparent store-opcode loss was local promotion, not proof of a missing write. |
 | DexProtector XOR+ADD CFF | profiles/dexprotector.cpp | done |
 | BitGuard / MVG jump-table CFF | profiles/mvg.cpp | done |
 | Substitution / MBA (Hikari full set) | mba_simplify.cpp | expand from docs/hikari_mba_rules.md |
