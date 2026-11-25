@@ -25,6 +25,7 @@
 #include <set>
 #include <deque>
 #include <memory>
+#include <algorithm>
 #include <cstdlib>
 
 namespace unslop {
@@ -107,15 +108,11 @@ struct PlannedEdge
 namespace {
 
 // Insertion-based conditional-split (PHASE B) and per-predecessor duplication
-// (PHASE C) are the last-mile "completion" that drives the dispatcher's
-// surviving real predecessors to ZERO so Hex-Rays' own DCE deletes the whole
-// state-machine tree (the clean outcome observed on 0x352CD4). They mutate the
-// graph ONLY through the sanctioned copy_block / insert_nop_blk insertion API
-// (never remove_block, never multi-father goto-collapse), so a malformed shape
-// degrades to a CATCHABLE mba->verify(true) failure -> the function is skipped
-// and the original emitted, never the uncatchable INTERR 51919 abort that the
-// removal path caused. Default ON; opt out with UNSLOP_NO_INSERT=1 to measure
-// the PHASE-A-only (edge-rewrite) behaviour in isolation.
+// (PHASE C) are experimental completion steps. A detached MBA can replay them
+// differently from the live MBA even when the serialized bytes match. The
+// guarded default never calls them; this switch is consulted only when the
+// explicit UNSLOP_NO_GUARD=1 diagnostic override is active. In that mode,
+// UNSLOP_NO_INSERT=1 measures the direct-edge-only behavior.
 bool insertion_ops_enabled()
 {
   qstring env;
@@ -506,12 +503,12 @@ void step_verify_emu(mba_t *mba, const char *step)
 //-------------------------------------------------------------------------
 // Emulated-BST multi-pass driver. Returns total changes (edges + splits + dups
 // + pruned). Does NOT verify / mark_chains_dirty (plugin owns those).
-static int rewrite_cfg_emulated_impl(mba_t *mba, DispatcherInfo *di)
+static int rewrite_cfg_emulated_impl(mba_t *mba, DispatcherInfo *di,
+                                     bool do_insertion)
 {
   int total = 0;
   const int MAX_PASSES = 16;
   const int MAX_DUP_PASSES = 200;
-  bool do_insertion = insertion_ops_enabled();
 
   // ── CHEAP PREFLIGHT: a failed prediction leaves this MBA unchanged. A
   //    successful prediction still requires the detached final-CFG check. ──
@@ -875,6 +872,46 @@ static bool rewritten_dispatcher_unreachable(mba_t *mba,
   return dispatcher_unreachable_from_entry(successors, dispatcher);
 }
 
+// Exact, pointer-free shape snapshot. MBA serialization can omit internal
+// bookkeeping used by copy_block(); compare the live graph with the detached
+// graph and recheck it before replaying any trial edits.
+static std::vector<uint64_t> mba_shape(mba_t *mba)
+{
+  std::vector<uint64_t> shape;
+  if ( mba == nullptr || mba->qty <= 0 )
+    return shape;
+  shape.push_back(uint64_t(mba->qty));
+  shape.push_back(uint64_t(mba->maturity));
+  for ( int i = 0; i < mba->qty; ++i )
+  {
+    mblock_t *block = mba->get_mblock(i);
+    if ( block == nullptr )
+      return {};
+    shape.push_back(uint64_t(block->start));
+    shape.push_back(uint64_t(block->end));
+    shape.push_back(uint64_t(block->type));
+    shape.push_back(uint64_t(block->tail == nullptr ? 0 : block->tail->opcode));
+    shape.push_back(uint64_t(block->nsucc()));
+    for ( int j = 0; j < block->nsucc(); ++j )
+      shape.push_back(uint64_t(block->succ(j)));
+    shape.push_back(uint64_t(block->npred()));
+    // The predecessor list is a set: deserialize may reorder it without
+    // changing control flow. Keep successor order, which can encode branch
+    // semantics, but canonicalize predecessors before comparison.
+    std::vector<int> predecessors;
+    for ( int j = 0; j < block->npred(); ++j )
+      predecessors.push_back(block->pred(j));
+    std::sort(predecessors.begin(), predecessors.end());
+    for ( int pred : predecessors )
+      shape.push_back(uint64_t(pred));
+    size_t count = 0;
+    for ( minsn_t *ins = block->head; ins != nullptr; ins = ins->next )
+      ++count;
+    shape.push_back(uint64_t(count));
+  }
+  return shape;
+}
+
 static int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
 {
   if ( mba == nullptr || di == nullptr )
@@ -882,9 +919,14 @@ static int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
   // UNSLOP_NO_GUARD is an explicit diagnostic override of both preflight and
   // postcondition. The default production path always checks both.
   if ( !commit_guard_enabled() )
-    return rewrite_cfg_emulated_impl(mba, di);
+    return rewrite_cfg_emulated_impl(mba, di, insertion_ops_enabled());
 
+  const int live_start_qty = mba->qty;
+  const std::vector<uint64_t> original_shape = mba_shape(mba);
+  if ( original_shape.empty() )
+    return 0;
   int trial_changes = 0;
+  std::vector<uint64_t> trial_final_shape;
   try
   {
     bytevec_t serialized;
@@ -893,10 +935,80 @@ static int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
         mba_t::deserialize(serialized.begin(), serialized.size()));
     if ( trial == nullptr )
       return 0;
+    DLOG(L_INFO, "commit guard trial start: live_qty=%d deserialized_qty=%d",
+         live_start_qty, trial->qty);
+    // Hex-Rays may normalize an MBA during roundtrip (including changing the
+    // number of blocks). Replaying a plan measured on that different graph
+    // against the live MBA can diverge after live edits. Require exact
+    // serialized identity before allowing any live replay.
+    bytevec_t roundtrip;
+    trial->serialize(&roundtrip);
+    const bool shape_equal = mba_shape(trial.get()) == original_shape;
+    const bool bytes_equal = roundtrip.size() == serialized.size()
+                          && std::equal(serialized.begin(), serialized.end(),
+                                        roundtrip.begin());
+    if ( !shape_equal || !bytes_equal )
+    {
+      DLOG(L_INFO, "commit guard: detached MBA roundtrip differs: shape=%d bytes=%d "
+                   "live_qty=%d trial_qty=%d",
+           shape_equal ? 1 : 0, bytes_equal ? 1 : 0, mba->qty, trial->qty);
+      if ( !shape_equal && mba->qty == trial->qty )
+      {
+        for ( int i = 0; i < mba->qty; ++i )
+        {
+          mblock_t *a = mba->get_mblock(i);
+          mblock_t *b = trial->get_mblock(i);
+          if ( a == nullptr || b == nullptr )
+            break;
+          int atail = a->tail == nullptr ? 0 : a->tail->opcode;
+          int btail = b->tail == nullptr ? 0 : b->tail->opcode;
+          size_t acount = 0, bcount = 0;
+          for ( minsn_t *p = a->head; p != nullptr; p = p->next ) ++acount;
+          for ( minsn_t *p = b->head; p != nullptr; p = p->next ) ++bcount;
+          if ( a->start != b->start || a->end != b->end
+            || a->type != b->type || atail != btail
+            || a->nsucc() != b->nsucc() || a->npred() != b->npred()
+            || acount != bcount )
+          {
+            DLOG(L_INFO, "roundtrip first block delta: blk=%d start=%llx/%llx "
+                         "end=%llx/%llx type=%d/%d tail=%d/%d "
+                         "succ=%d/%d pred=%d/%d insns=%d/%d", i,
+                 (unsigned long long)a->start, (unsigned long long)b->start,
+                 (unsigned long long)a->end, (unsigned long long)b->end,
+                 int(a->type), int(b->type), atail, btail,
+                 a->nsucc(), b->nsucc(), a->npred(), b->npred(),
+                 int(acount), int(bcount));
+            break;
+          }
+          bool order_diff = false;
+          for ( int j = 0; j < a->nsucc(); ++j )
+            order_diff |= a->succ(j) != b->succ(j);
+          for ( int j = 0; j < a->npred(); ++j )
+            order_diff |= a->pred(j) != b->pred(j);
+          if ( order_diff )
+          {
+            DLOG(L_INFO, "roundtrip first edge-order delta: blk=%d", i);
+            break;
+          }
+        }
+      }
+      return 0;
+    }
     DispatcherInfo trial_di = *di;
-    trial_changes = rewrite_cfg_emulated_impl(trial.get(), &trial_di);
+    // The default guarded path uses only direct edge rewrites. Block
+    // insertion/duplication can depend on MBA bookkeeping omitted by
+    // serialization and diverge during live replay.
+    trial_changes = rewrite_cfg_emulated_impl(trial.get(), &trial_di, false);
+    DLOG(L_INFO, "commit guard trial end: changes=%d trial_qty=%d",
+         trial_changes, trial->qty);
     if ( trial_changes <= 0 )
       return 0;
+    if ( trial->qty != live_start_qty || mba_shape(mba) != original_shape )
+    {
+      DLOG(L_INFO, "commit guard: trial changed block count or live MBA; "
+                   "original CFG retained");
+      return 0;
+    }
     trial->verify(true);
     if ( !rewritten_dispatcher_unreachable(trial.get(), trial_di) )
     {
@@ -904,6 +1016,9 @@ static int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
                    "original CFG retained");
       return 0;
     }
+    trial_final_shape = mba_shape(trial.get());
+    if ( trial_final_shape.empty() )
+      return 0;
   }
   catch ( ... )
   {
@@ -911,11 +1026,13 @@ static int rewrite_cfg_emulated(mba_t *mba, DispatcherInfo *di)
     return 0;
   }
 
-  // The detached and live inputs are identical. If this deterministic replay
-  // ever diverges, fail-stop instead of silently emitting a partially edited
-  // live MBA; the verifier cannot roll back an in-place mutation.
-  const int live_changes = rewrite_cfg_emulated_impl(mba, di);
+  // The detached and live inputs still have identical shape. The replay below
+  // does not call copy_block(), so block serials cannot shift.
+  const int live_changes = rewrite_cfg_emulated_impl(mba, di, false);
+  DLOG(L_INFO, "commit guard live end: changes=%d live_qty=%d",
+       live_changes, mba->qty);
   QASSERT(59992, live_changes == trial_changes
+                    && mba_shape(mba) == trial_final_shape
                     && rewritten_dispatcher_unreachable(mba, *di));
   return live_changes;
 }

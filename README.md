@@ -56,8 +56,9 @@ corrupt microcode (that aborts IDA with an INTERR). Across all verified runs:
 **0 INTERR**.
 
 The emulated CFG rewriter also checks a detached microcode trial and keeps the
-original graph unless every dispatcher block becomes unreachable. See the
-[postcondition and its measured limits](docs/emulated_dispatcher_postcondition.md).
+original graph unless every dispatcher block becomes unreachable. Its guarded
+default currently excludes block insertion/duplication, which limits coverage;
+see the [postcondition and measured limits](docs/emulated_dispatcher_postcondition.md).
 
 ---
 
