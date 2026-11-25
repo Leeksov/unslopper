@@ -6,7 +6,7 @@
 | Classic OLLVM (sr-tream, Junod) | profiles/ollvm.cpp | done (same scramble32) |
 | Promon SHIELD BST CFF + opaque | profiles/promon.cpp | done |
 | Promon Android ARM32 Thumb CFF + encoded calls (Valu 10.5.3) | core/promon_thumb_audit.cpp (action 40) | read-only, hash-gated audit of two hubs; rewrite not validated |
-| Appdome-associated affine jump-table CFF | core/dispatcher.cpp + core/jtbl_affine.h | [exact state-map detection; side-effectful `libloader` dispatcher remains unchanged](appdome_affine_jtbl.md). No verified full recovery yet |
+| Appdome-associated affine jump-table CFF | core/dispatcher.cpp + core/jtbl_affine.h; opt-in core/stack_jtbl.cpp context path | [exact state-map detection](appdome_affine_jtbl.md); [experimental context recovery](appdome_affine_context.md) edited 35/188 strong-affine candidates in one `libloader` build (9 full visible, 25 partial, 1 mixed). Other CFF forms and builds remain unverified |
 | DexProtector XOR+ADD CFF | profiles/dexprotector.cpp | done |
 | BitGuard / MVG jump-table CFF | profiles/mvg.cpp | done |
 | Substitution / MBA (Hikari full set) | mba_simplify.cpp | expand from docs/hikari_mba_rules.md |

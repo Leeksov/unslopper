@@ -1,7 +1,9 @@
 #include "stack_jtbl.h"
+#include "affine_context_gate.h"
 #include "block_dup.h"
 #include "unslop_log.h"
 #include <algorithm>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -11,6 +13,8 @@
 
 namespace unslop
 {
+static thread_local bool g_affine_context_trial_active = false;
+bool affine_context_trial_active() { return g_affine_context_trial_active; }
 namespace
 {
 // Values are local scalars, never file-backed globals. Width is part of the
@@ -247,13 +251,22 @@ std::optional<uint64_t> value(const mop_t &m, const Env &env, int depth)
     return evaluate(*m.d, env, depth - 1, m.size);
   return {};
 }
-// Calls/indirect writes are barriers. This deliberately rejects contexts
-// whose proof would require alias assumptions or a process-memory snapshot.
+// The established stack-state planner treats indirect stores as a full fact
+// barrier. The opt-in register-state planner may preserve only register facts
+// across m_stx: memory writes cannot modify a microregister, but may alias any
+// stack slot. Keep the old stack-state behavior unchanged by default.
 bool barrier(const minsn_t &i) { return call_in(i) || i.opcode == m_stx || i.opcode == m_ext; }
-Vars transfer_need(mblock_t *b, Vars need)
+Vars transfer_need(mblock_t *b, Vars need, bool preserve_reg_across_stx = false)
 {
   for (auto i = b->tail; i; i = i->prev)
   {
+    if (preserve_reg_across_stx && i->opcode == m_stx
+      && affine_store_keeps_register_facts(call_in(*i)))
+    {
+      for (auto it = need.begin(); it != need.end();)
+        it = it->kind == 2 ? need.erase(it) : std::next(it);
+      continue; // i.d is the STORE ADDRESS, not a register definition
+    }
     auto d = variable(i->d);
     bool demanded = d && need.count(*d);
     if (d)
@@ -274,10 +287,17 @@ Vars transfer_need(mblock_t *b, Vars need)
   }
   return need;
 }
-void run_body(mblock_t *b, Env &env)
+void run_body(mblock_t *b, Env &env, bool preserve_reg_across_stx = false)
 {
   for (auto i = b->head; i; i = i->next)
   {
+    if (preserve_reg_across_stx && i->opcode == m_stx
+      && affine_store_keeps_register_facts(call_in(*i)))
+    {
+      for (auto it = env.begin(); it != env.end();)
+        it = it->first.kind == 2 ? env.erase(it) : std::next(it);
+      continue; // preserve registers; i.d is the memory address operand
+    }
     if (barrier(*i))
       env.clear();
     auto d = variable(i->d);
@@ -311,6 +331,8 @@ struct Node
   Key key;
   std::vector<int> succ;
   bool dispatch = false;
+  bool ordinary_jtbl = false;
+  int parent = -1; // first discovered predecessor context (diagnostic only)
 };
 void goto_only(mblock_t *b, int dst, bool replace_tail)
 {
@@ -615,6 +637,370 @@ int unflatten_stack_jtbl(mba_t *mba,StackJtblDiagnostics *diagnostics)
   emit(mba);
   dump_mba_to_file(mba, "stack_jtbl_emitted");
   if(diagnostics)diagnostics->reason="complete";
+  return dispatches;
+}
+
+// Experimental register-affine variant of the all-or-nothing context planner.
+// Unlike a father->case edge shortcut, cloned dispatcher contexts execute the
+// full original dispatcher body, including every register/memory side effect.
+// A second ordinary switch is preserved as a switch with context-local targets.
+int unflatten_affine_context_jtbl(mba_t *mba, StackJtblDiagnostics *diagnostics)
+{
+  if (g_affine_context_trial_active)
+    return 0;
+  auto reject = [&](const char *why) {
+    if (diagnostics) diagnostics->reason = why;
+    DLOG(L_INFO, "affine-context rejected: %s", why);
+    return 0;
+  };
+  qstring enabled;
+  if (!qgetenv("UNSLOP_AFFINE_CONTEXT", &enabled) || enabled != "1")
+    return reject("disabled");
+  if (mba == nullptr || mba->maturity != MMAT_GLBOPT1)
+    return reject("deferred_until_glbopt1");
+  const int original = mba->qty;
+  if (original < 6 || original > 1000)
+    return reject("input_block_limit");
+
+  int disp = -1;
+  Var raw_state, branch_selector;
+  std::map<uint64_t, int> cases;
+  for (int b = 1; b < original - 1; ++b)
+  {
+    mblock_t *blk = mba->get_mblock(b);
+    minsn_t *tail = blk->tail;
+    if (tail == nullptr || tail->opcode != m_jtbl || blk->npred() < 3)
+      continue;
+    if (tail->l.t != mop_r || tail->l.size != 8
+      || tail->r.t != mop_c || tail->r.c == nullptr)
+      continue;
+    const auto selector = variable(tail->l);
+    if (!selector)
+      continue;
+    const minsn_t *definition = nullptr;
+    for (minsn_t *ins = blk->head; ins != tail; ins = ins->next)
+    {
+      if (ins == nullptr)
+        return reject("malformed_dispatcher_body");
+      const auto dst = variable(ins->d);
+      if (dst && overlaps(*dst, *selector))
+        definition = ins; // LAST overlapping selector definition wins
+    }
+    if (definition == nullptr || definition->opcode != m_xdu
+      || definition->d.t != mop_r || definition->d.r != tail->l.r
+      || definition->l.t != mop_d || definition->l.d == nullptr)
+      continue;
+    const minsn_t &arith = *definition->l.d;
+    if ((arith.opcode != m_sub && arith.opcode != m_add)
+      || arith.l.t != mop_r || arith.l.size != 4
+      || arith.r.t != mop_n || arith.r.size != 4
+      || arith.d.size != 4)
+      continue;
+    if (disp != -1)
+      return reject("multiple_affine_dispatchers");
+
+    std::map<uint64_t, int> candidate_cases;
+    bool has_default = false;
+    for (int j = 0; j < int(tail->r.c->size()); ++j)
+    {
+      const int target = tail->r.c->targets[j];
+      if (target < 0 || target >= original)
+        return reject("invalid_case_target");
+      const auto &vals = tail->r.c->values[j];
+      if (vals.empty()) { has_default = true; continue; }
+      for (auto n : vals)
+      {
+        const uint64_t key = uint64_t(n);
+        if (key > 0xFFFFFFFFull)
+          return reject("case_outside_32bit_selector");
+        auto old = candidate_cases.find(key);
+        if (old != candidate_cases.end() && old->second != target)
+          return reject("conflicting_case_target");
+        candidate_cases[key] = target;
+      }
+    }
+    if (!has_default || candidate_cases.size() < 4)
+      continue;
+    // Larger affine tables are expensive to trial and have not produced a
+    // verified recovery in this corpus. Reject before context construction
+    // or any detached optimizer work; 128 still exceeds every edited fixture.
+    if (candidate_cases.size() > 128)
+      return reject("case_budget");
+    disp = b;
+    raw_state = *variable(arith.l);
+    branch_selector = *selector;
+    cases = std::move(candidate_cases);
+    DLOG(L_INFO, "affine-context: dispatcher %d raw-reg=%llu selector-reg=%llu cases=%d",
+         disp, (unsigned long long)raw_state.off,
+         (unsigned long long)branch_selector.off, int(cases.size()));
+  }
+  if (disp < 0)
+    return reject("no_affine_dispatcher");
+  if (diagnostics) diagnostics->cases = int(cases.size());
+
+  // Project only facts that can influence the next raw-state input. The
+  // selector temporary is computed inside the dispatcher from that input.
+  std::vector<Vars> need(original);
+  need[disp].insert(raw_state);
+  bool changed = true;
+  for (int iter = 0; changed && iter < original * 2; ++iter)
+  {
+    changed = false;
+    for (int b = original - 2; b > 0; --b)
+    {
+      if (b == disp)
+        continue;
+      Vars n;
+      mblock_t *blk = mba->get_mblock(b);
+      for (int j = 0; j < blk->nsucc(); ++j)
+      {
+        const int s = blk->succ(j);
+        if (s < 0 || s >= original)
+          return reject("invalid_successor");
+        n.insert(need[s].begin(), need[s].end());
+      }
+      n = transfer_need(blk, n, true);
+      if (n != need[b]) { need[b] = std::move(n); changed = true; }
+    }
+  }
+  if (changed)
+    return reject("demand_did_not_converge");
+
+  std::vector<Node> nodes;
+  std::map<Key, int> seen;
+  int active_parent = -1;
+  auto intern = [&](int block, const Env &env)
+  {
+    if (block == original - 1)
+      return -1;
+    Key key{block, {}};
+    for (const auto &v : need[block])
+      for (const auto &kv : env)
+        if (overlaps(v, kv.first)) key.env.insert(kv);
+    const auto old = seen.find(key);
+    if (old != seen.end()) return old->second;
+    const int id = int(nodes.size());
+    seen.emplace(key, id);
+    nodes.push_back({key, {}, block == disp, false, active_parent});
+    return id;
+  };
+  if (mba->get_mblock(0)->nsucc() != 1 || mba->get_mblock(0)->succ(0) != 1)
+    return reject("unsupported_entry");
+  intern(1, {});
+  int dispatches = 0;
+  for (size_t i = 0; i < nodes.size(); ++i)
+  {
+    if (nodes.size() > 2048 || nodes.size() > size_t(original * 12))
+      return reject("context_budget");
+    active_parent = int(i);
+    const int b = nodes[i].key.block;
+    mblock_t *blk = mba->get_mblock(b);
+    Env env = nodes[i].key.env;
+    run_body(blk, env, true);
+    std::vector<int> succ;
+    if (b == disp)
+    {
+      const auto case_value = masked_value(blk->tail->l, env, mask(branch_selector.size));
+      if (!case_value || cases.count(*case_value) == 0)
+      {
+        DLOG(L_INFO, "affine-context: unresolved selector at context %d block %d",
+             int(i), b);
+        for (int p = int(i), depth = 0; p >= 0 && depth < 24; p = nodes[p].parent, ++depth)
+        {
+          const Node &ancestor = nodes[p];
+          DLOG(L_INFO, "  path[%d] context=%d original_block=%d facts=%d",
+               depth, p, ancestor.key.block, int(ancestor.key.env.size()));
+          for (const auto &fact : ancestor.key.env)
+            DLOG(L_INFO, "    fact kind=%d off=%llu width=%d value=0x%llx",
+                 fact.first.kind, (unsigned long long)fact.first.off,
+                 fact.first.size, (unsigned long long)fact.second);
+        }
+        return reject("unknown_or_unmapped_selector");
+      }
+      succ.push_back(intern(cases.at(*case_value), env));
+      ++dispatches;
+    }
+    else if (blk->tail && blk->tail->opcode == m_jtbl)
+    {
+      const mcases_t *table = blk->tail->r.t == mop_c ? blk->tail->r.c : nullptr;
+      if (table == nullptr || table->size() < 2 || table->size() > 64)
+        return reject("unsupported_ordinary_jtbl");
+      std::set<int> table_targets;
+      for (int j = 0; j < int(table->size()); ++j)
+      {
+        const int target = table->targets[j];
+        if (target < 0 || target >= original)
+          return reject("invalid_ordinary_case_target");
+        table_targets.insert(target);
+        succ.push_back(intern(target, env));
+      }
+      if (table_targets.size() != size_t(blk->nsucc()))
+        return reject("ordinary_case_successor_mismatch");
+      for (int j = 0; j < blk->nsucc(); ++j)
+        if (table_targets.count(blk->succ(j)) == 0)
+          return reject("ordinary_case_successor_mismatch");
+      nodes[i].ordinary_jtbl = true;
+    }
+    else if (blk->nsucc() == 2)
+    {
+      minsn_t *t = blk->tail;
+      if (t == nullptr || !is_mcode_jcond(t->opcode) || t->d.t != mop_b)
+        return reject("unsupported_conditional_exit");
+      succ.push_back(intern(t->d.b, env));
+      succ.push_back(intern(b + 1, env));
+    }
+    else if (blk->nsucc() == 1)
+    {
+      if (blk->tail && blk->tail->opcode == m_ijmp)
+        return reject("unresolved_indirect_exit");
+      succ.push_back(intern(blk->succ(0), env));
+    }
+    else if (blk->nsucc() != 0)
+      return reject("unsupported_successor_count");
+    nodes[i].succ = std::move(succ);
+  }
+  if (dispatches < 2)
+    return reject("insufficient_dispatch_contexts");
+  if (diagnostics) diagnostics->contexts = int(nodes.size());
+  DLOG(L_INFO, "affine-context: proved %d dispatches across %d contexts",
+       dispatches, int(nodes.size()));
+
+  auto emit = [&](mba_t *work)
+  {
+    mblock_t *exit = work->get_mblock(original - 1);
+    std::vector<mblock_t *> clones, bridges;
+    for (const Node &n : nodes)
+    {
+      mblock_t *c = work->copy_block(work->get_mblock(n.key.block), work->qty - 1,
+                                    CPBLK_MINREF);
+      if (c == nullptr) throw 1;
+      clones.push_back(c);
+      mblock_t *bridge = nullptr;
+      if (n.succ.size() == 2 && !n.ordinary_jtbl)
+      {
+        bridge = work->copy_block(c, work->qty - 1, CPBLK_MINREF);
+        if (bridge == nullptr) throw 1;
+        for (minsn_t *j = bridge->head; j; j = j->next)
+          bridge->make_nop(j);
+      }
+      bridges.push_back(bridge);
+    }
+    auto serial = [&](int id) { return id < 0 ? exit->serial : clones[id]->serial; };
+    for (size_t i = 0; i < nodes.size(); ++i)
+    {
+      mblock_t *c = clones[i];
+      const Node &n = nodes[i];
+      c->predset.clear();
+      c->succset.clear();
+      if (n.ordinary_jtbl)
+      {
+        if (c->tail == nullptr || c->tail->opcode != m_jtbl
+          || c->tail->r.t != mop_c || c->tail->r.c == nullptr
+          || c->tail->r.c->size() != n.succ.size()) throw 1;
+        const mblock_t *source = work->get_mblock(n.key.block);
+        if (source->tail == nullptr || source->tail->r.t != mop_c
+          || source->tail->r.c == nullptr || source->tail->r.c == c->tail->r.c)
+          throw 1; // copy_block must not alias the original case table
+        const std::vector<int> original_targets(
+            source->tail->r.c->targets.begin(), source->tail->r.c->targets.end());
+        for (size_t j = 0; j < n.succ.size(); ++j)
+        {
+          const int dst = serial(n.succ[j]);
+          c->tail->r.c->targets[j] = dst;
+          if (!c->succset.has(dst)) c->succset.push_back(dst);
+        }
+        if (source->tail->r.c->targets.size() != original_targets.size()) throw 1;
+        for (size_t j = 0; j < original_targets.size(); ++j)
+          if (source->tail->r.c->targets[j] != original_targets[j]) throw 1;
+      }
+      else if (n.succ.size() == 2)
+      {
+        c->tail->d.make_blkref(serial(n.succ[0]));
+        c->succset.push_back(bridges[i]->serial);
+        c->succset.push_back(serial(n.succ[0]));
+        goto_only(bridges[i], serial(n.succ[1]), false);
+      }
+      else if (n.succ.size() == 1)
+      {
+        const bool replace = c->tail &&
+          (c->tail->opcode == m_jtbl || c->tail->opcode == m_goto || n.dispatch);
+        goto_only(c, serial(n.succ[0]), replace);
+      }
+      c->mark_lists_dirty();
+    }
+    mblock_t *entry = work->get_mblock(1);
+    for (minsn_t *i = entry->head; i; i = i->next) entry->make_nop(i);
+    goto_only(entry, clones[0]->serial, false);
+    for (int i = 0; i < work->qty; ++i) work->get_mblock(i)->predset.clear();
+    for (int i = 0; i < work->qty; ++i)
+    {
+      mblock_t *b = work->get_mblock(i);
+      for (int j = 0; j < b->nsucc(); ++j)
+      {
+        mblock_t *s = work->get_mblock(b->succ(j));
+        if (!s->predset.has(i)) s->predset.push_back(i);
+      }
+    }
+    work->mark_chains_dirty();
+    work->verify(true);
+  };
+  const ea_t original_dispatcher_ea = mba->get_mblock(disp)->start;
+  auto reachable_dispatcher = [&](mba_t *work)
+  {
+    std::vector<char> reached(work->qty, 0);
+    std::vector<int> queue{0};
+    reached[0] = 1;
+    for (size_t qi = 0; qi < queue.size(); ++qi)
+    {
+      const int b = queue[qi];
+      mblock_t *blk = work->get_mblock(b);
+      if (blk->start == original_dispatcher_ea && blk->tail
+        && blk->tail->opcode == m_jtbl)
+        return true;
+      for (int j = 0; j < blk->nsucc(); ++j)
+      {
+        const int s = blk->succ(j);
+        if (s < 0 || s >= work->qty)
+          return true; // malformed graph is not an acceptable rewrite
+        if (!reached[s]) { reached[s] = 1; queue.push_back(s); }
+      }
+    }
+    return false;
+  };
+  try
+  {
+    bytevec_t serialized;
+    mba->serialize(&serialized);
+    std::unique_ptr<mba_t> trial(mba_t::deserialize(serialized.begin(), serialized.size()));
+    if (!trial) return reject("trial_deserialization_failed");
+    emit(trial.get());
+    if (reachable_dispatcher(trial.get()))
+      return reject("residual_dispatcher_reachable_before_opt");
+    // Diagnostic only: ask Hex-Rays to continue global optimization on the
+    // detached rewritten array. A normal verifier does not catch INTERR 50342
+    // later at GLBOPT3 in the observed libloader build.
+    g_affine_context_trial_active = true;
+    DLOG(L_INFO, "affine-context: downstream trial begin maturity=%d qty=%d",
+         int(trial->maturity), trial->qty);
+    const merror_t later = trial->optimize_global();
+    g_affine_context_trial_active = false;
+    DLOG(L_INFO, "affine-context: downstream trial return=%d maturity=%d qty=%d",
+         int(later), int(trial->maturity), trial->qty);
+    if (!affine_trial_completed(int(later), int(trial->maturity),
+                                int(MMAT_GLBOPT2)))
+      return reject("trial_downstream_optimizer_rejected");
+    trial->verify(true);
+    if (reachable_dispatcher(trial.get()))
+      return reject("residual_dispatcher_reachable_after_opt");
+  }
+  catch (...)
+  {
+    g_affine_context_trial_active = false;
+    DLOG(L_WARN, "affine-context: detached trial rejected");
+    return reject("trial_verifier_rejected");
+  }
+  QASSERT(59992, (emit(mba), true));
+  if (diagnostics) diagnostics->reason = "complete";
   return dispatches;
 }
 } // namespace unslop

@@ -149,6 +149,10 @@ the manifest with `tools/yuanshen_unflatten_manifest.py`; see
 needed because an incomplete IDA switch table can truncate microcode before
 the ordinary F5 optimizer runs.
 
+Experimental Appdome-associated affine jump-table context recovery preserves
+dispatcher side effects by cloning complete microcode blocks. It is opt-in and
+was measured on one exact `libloader` image; see [coverage and limits](docs/appdome_affine_context.md).
+
 ### Environment switches
 
 | Variable | Effect |
@@ -160,6 +164,7 @@ the ordinary F5 optimizer runs.
 | `UNSLOP_FP_LUT_START/END=0x…` | override the FairPlay VM LUT bounds for other builds |
 | `UNSLOP_LOG=0..5`, `UNSLOP_LOG_FILE=…`, `UNSLOP_ONLY_EA=0x…` | diagnostics |
 | `UNSLOP_PROMON_THUMB_AUDIT=1` | permit action `40` on the [audited Valu ARM32 image](docs/promon_android_thumb.md); no IDB edits |
+| `UNSLOP_AFFINE_CONTEXT=1` | opt in to [experimental Appdome-associated affine jump-table context recovery](docs/appdome_affine_context.md); unknown paths fail closed |
 
 ### Automatic C++ Arxan branch recovery
 

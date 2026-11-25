@@ -151,6 +151,14 @@ int UnslopperOptblock::run_pipeline(mba_t *mba, bool *definitely_not_cff)
   // CFF and are worth re-attempting).
   *definitely_not_cff = false;
 
+  StackJtblDiagnostics affine_context_report;
+  int affine_context_changes = unflatten_affine_context_jtbl(mba, &affine_context_report);
+  if ( affine_context_changes > 0 )
+  {
+    diagnostics[mba->entry_ea].stack = affine_context_report;
+    return affine_context_changes;
+  }
+
   StackJtblDiagnostics stack_report;
   int stack_changes = unflatten_stack_jtbl(mba,&stack_report);
   if(mba->maturity==MMAT_GLBOPT1)
@@ -383,6 +391,8 @@ int idaapi UnslopperOptblock::func(mblock_t *blk)
 {
   if ( !active )
     return 0;
+  if ( affine_context_trial_active() )
+    return 0; // detached downstream optimizer preflight must not recurse
 
   mba_t *mba = blk->mba;
   // Run the full unflatten pipeline at the GLOBAL-optimization maturities so
