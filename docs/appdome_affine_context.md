@@ -49,10 +49,11 @@ are not a universal guarantee.
 
 The other 153 candidates had no reported edge rewrite. All 35 edited
 functions produced the same `goto` and `switch` counts on a second F5.
-Recursive microcode inspection found identical source-address multisets for
-calls, indirect calls, memory stores and external effects before and after
-the pass in those 35 functions. This checks for dropped or invented operation
-origins; it is not a proof of equivalent behavior for every input.
+An earlier source-address comparison found identical call and store origins
+at GLBOPT1, but that maturity can precede the context rewrite. It therefore
+does **not** verify effects in the final F5 graph. A final-MBA effect audit is
+pending; use this opt-in mode as experimental and do not assume behavioral
+equivalence for every input.
 
 Representative measurements:
 
