@@ -1,13 +1,10 @@
 # Affine jump-table context recovery (experimental)
 
-**Current status: disabled.** A final-MBA audit found that `m_stx` at
-`0x2C2F50` in function `0x2C2E50` becomes a local-array assignment at the
-same source address after context expansion. The initial opcode-only check
-mistook this for a missing write. A destination/dataflow audit of all edited
-functions is still pending, so `UNSLOP_AFFINE_CONTEXT=1` does not invoke this
-rewrite in the plugin.
-The results below describe an earlier isolated experiment, not a currently
-enabled feature.
+**Current status: experimental and opt-in.** Set `UNSLOP_AFFINE_CONTEXT=1`
+before starting IDA to enable this path. A final-maturity microcode audit of
+all 35 edited functions found three differences that required manual
+classification; they are described below. The audit supports a bounded result
+on one exact image, not all-path equivalence or complete CFF removal.
 
 Unslopper can analyze an Appdome-marked ARM64 `libloader` whose SHA-256 is
 `aa4ba77dc142c944b64fdbd8d3fb83a38b7e7200b13cb79422dc9da88cf10970`.
@@ -16,8 +13,7 @@ such as `xdu(w9 - constant)`. Some dispatchers also copy registers and update
 the state before the branch. A direct predecessor-to-case edge would skip those
 instructions, so the ordinary jump-table rewriter declines these functions.
 
-The isolated trial used `UNSLOP_AFFINE_CONTEXT=1` before starting IDA. Its
-context path recognizes an exact `m_xdu(m_add/sub(raw32, immediate32))` selector
+The context path recognizes an exact `m_xdu(m_add/sub(raw32, immediate32))` selector
 and builds a bounded graph of `(original block, known state facts)` contexts.
 Each context clones the **complete** original block; a dispatcher clone keeps
 every pre-branch instruction and replaces only its proven `m_jtbl` target with
@@ -58,11 +54,27 @@ are not a universal guarantee.
 
 The other 153 candidates had no reported edge rewrite. All 35 edited
 functions produced the same `goto` and `switch` counts on a second F5.
-An earlier source-address comparison found identical call and store origins
-at GLBOPT1, but that maturity can precede the context rewrite. It therefore
-does **not** verify effects in the final F5 graph. A final-MBA effect audit is
-pending; use this opt-in mode as experimental and do not assume behavioral
-equivalence for every input.
+An initial GLBOPT1 origin comparison was insufficient because it can precede
+the rewrite. A second audit inspected each actual final `cfunc.mba` after OFF
+and ON F5. Calls, indirect calls, memory stores and external effects had
+identical recursive opcode/source-address multisets in 32 of 35 functions.
+The other three were resolved with additional destination and CFG checks:
+
+- `0x2C2E50`: `m_stx` at `0x2C2F50` becomes a one-byte local-array assignment
+  at the same EA. Both forms write the same stack slot (`[xsp+B6h]`), with the
+  high byte of the same loaded halfword; the local buffer is passed to the
+  subsequent call.
+- `0x97138`: the missing `m_call` at `0x971D0` is the synthetic default
+  `abort()` of the primary 32-case CFF switch. The context planner maps every
+  reachable selector state to cases 0–31 in its bounded model and removes
+  that default. The application-call origins remain equal.
+- `0xB9C5C`: stores at `0xB9F2C` and `0xBA4E4` each appear twice in ON
+  microcode because context specialization copies them into the two mutually
+  exclusive successors of a conditional block. The same write expression
+  runs once along either selected path.
+
+These checks do not prove equivalent behavior for every possible input or
+another Appdome build. The mode remains opt-in.
 
 Representative measurements:
 
