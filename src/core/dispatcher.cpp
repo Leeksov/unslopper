@@ -1120,6 +1120,35 @@ static int count_tree_nodes_for(mba_t *mba, int entry, mreg_t sel)
   return int(seen.size());
 }
 
+// A direct father->case edge skips the entire identity register-BST tree.
+// Its comparisons may be skipped, but an instruction before one of those
+// branches may restore a live register or perform another visible operation.
+// In particular, a register restore at the root is not selector arithmetic.
+// Keep this identity path fail-closed until such effects can be preserved by
+// a proven context rewrite.
+static bool identity_tree_branch_only(mba_t *mba,
+                                      const std::set<int> &tree_nodes)
+{
+  if ( tree_nodes.empty() )
+    return false;
+  for ( int serial : tree_nodes )
+  {
+    const mblock_t *blk = mba->get_mblock(serial);
+    if ( blk == nullptr || blk->tail == nullptr )
+      return false;
+    std::vector<int> prefix;
+    for ( const minsn_t *ins = blk->head; ins != blk->tail; ins = ins->next )
+    {
+      if ( ins == nullptr )
+        return false;
+      prefix.push_back(int(ins->opcode));
+    }
+    if ( !bst_branch_prefix_only_nops(prefix, int(m_nop)) )
+      return false;
+  }
+  return true;
+}
+
 // Register-BST dispatcher with NO xor transform (AppDome / Promon family):
 // the entry compares a runtime state register against per-node thresholds
 // (immediates or prologue-pool registers). Treat it as an identity transform
@@ -1212,6 +1241,13 @@ static bool detect_emulated_dispatcher(mba_t *mba, DispatcherInfo *out,
   build_state_map_emulated(mba, &di, regmap);
   if ( di.state_map.size() < 2 )
     return false;
+
+  if ( via_regbst && !identity_tree_branch_only(mba, di.dispatcher_blocks) )
+  {
+    DLOG(L_INFO, "register-BST reject: comparison tree has instructions "
+                 "whose effects a direct edge would skip");
+    return false;
+  }
 
   // Register-BST safety pre-filter. A genuine magic-BST resolves at least as
   // many distinct states as its comparison tree has nodes (nodes/states ~0.7-

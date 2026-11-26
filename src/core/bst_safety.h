@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 namespace unslop {
 
@@ -24,6 +25,17 @@ inline bool bst_terminal_branch_shape(bool is_terminal, int successors,
   return is_terminal && successors == 2
       && branch_target != fallthrough
       && fallthrough == next_serial;
+}
+
+// Directly rewiring an identity BST entry bypasses every instruction in its
+// comparison nodes. Only NOPs may precede the terminal branch in that mode.
+inline bool bst_branch_prefix_only_nops(const std::vector<int> &prefix,
+                                        int nop_opcode)
+{
+  for ( int opcode : prefix )
+    if ( opcode != nop_opcode )
+      return false;
+  return true;
 }
 
 } // namespace unslop

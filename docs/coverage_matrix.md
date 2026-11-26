@@ -7,6 +7,7 @@
 | Promon SHIELD BST CFF + opaque | profiles/promon.cpp | done |
 | Promon Android ARM32 Thumb CFF + encoded calls (Valu 10.5.3) | core/promon_thumb_audit.cpp (action 40) | read-only, hash-gated audit of two hubs; rewrite not validated |
 | Appdome-associated affine jump-table CFF | core/dispatcher.cpp + core/jtbl_affine.h; opt-in core/stack_jtbl.cpp context path | [Exact state-map detection](appdome_affine_jtbl.md); [experimental context recovery](appdome_affine_context.md): 92 affine completions in a full F5 scan of 10,728 non-trampoline functions in one `libloader` build (36 within the original 188 strong-affine candidates, 56 outside). All plugin passes together touched 1,000 functions / 9,427 edges. Final-MBA effect deltas were audited in selected functions; all-path equivalence, full CFF removal, and other builds remain unverified. |
+| Appdome-associated register-BST CFF | core/dispatcher.cpp + core/cfg_rewriter.cpp | [Effect-boundary audit](appdome_bst_purity.md): a direct edge is allowed only when every identity-BST comparison node has no pre-branch effects. In one `libloader` image, 211 heuristic candidates all decompiled; 3 received 12 edge edits. Large side-effectful trees remain flattened. |
 | DexProtector XOR+ADD CFF | profiles/dexprotector.cpp | done |
 | BitGuard / MVG jump-table CFF | profiles/mvg.cpp | done |
 | Substitution / MBA (Hikari full set) | mba_simplify.cpp | expand from docs/hikari_mba_rules.md |
