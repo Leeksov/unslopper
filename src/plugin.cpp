@@ -22,7 +22,6 @@
 #include <nalt.hpp>
 #include <atomic>
 #include <cstdlib>
-#include <fcntl.h>
 #include <iomanip>
 #include <map>
 #include <set>
@@ -788,7 +787,7 @@ struct identity_audit_only_ctx_t : public plugmod_t
   {
     qstring output_path;
     std::string run_id;
-    int output_handle = -1;
+    FILE *output_file = nullptr;
     uint64_t sequence = 0;
     bool active = true;
     bool failed = false;
@@ -815,13 +814,28 @@ struct identity_audit_only_ctx_t : public plugmod_t
       id << qgetpid() << '-' << (unsigned long long)qtime64()
          << '-' << ++next_nonce;
       run_id = id.str();
-      // Exclusive creation rejects an existing file or final-path symlink.
-      // Each plugin context owns its own output file; no shared append race.
-      output_handle = qopen(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_BINARY);
+      // qfopen("wx") is not exclusive in the tested IDA 9.5 runtime. Use a
+      // per-context filename and reject a preexisting path. This prevents
+      // normal plugin contexts from sharing an output file; the parent
+      // directory must be trusted because the existence check is not atomic.
+      const std::string file_path = std::string(path.c_str()) + "." + run_id + ".jsonl";
+      if (qfileexist(file_path.c_str()))
+      {
+        msg("[unslop-identity-audit] per-context output path already exists\n");
+        return;
+      }
+      output_path = file_path.c_str();
+      output_file = qfopen(output_path.c_str(), "wb");
+      if (output_file == nullptr)
+      {
+        const error_t code = get_qerrno();
+        msg("[unslop-identity-audit] private JSONL creation failed: qerrno=%d\n",
+            int(code));
+      }
     }
     ~audit_optblock_t()
     {
-      if (output_handle >= 0 && qclose(output_handle) != 0)
+      if (output_file != nullptr && qfclose(output_file) != 0)
         msg("[unslop-identity-audit] JSONL close failed\n");
     }
 
@@ -869,9 +883,11 @@ struct identity_audit_only_ctx_t : public plugmod_t
       }
       line << "]}\n";
       const std::string bytes = line.str();
-      if (output_handle < 0)
+      if (output_file == nullptr)
         return false;
-      return qwrite(output_handle, bytes.data(), bytes.size()) == int(bytes.size());
+      if (qfwrite(output_file, bytes.data(), bytes.size()) != ssize_t(bytes.size()))
+        return false;
+      return qflush(output_file) == 0;
     }
 
     virtual int idaapi func(mblock_t *block) override
@@ -908,14 +924,15 @@ struct identity_audit_only_ctx_t : public plugmod_t
   bool installed = false;
   identity_audit_only_ctx_t(const qstring &path) : optimizer(path)
   {
-    if (optimizer.output_handle < 0)
+    if (optimizer.output_file == nullptr)
     {
-      msg("[unslop-identity-audit] output must be a new file in a trusted directory\n");
+      msg("[unslop-identity-audit] output base must be in a trusted writable directory\n");
       return;
     }
     install_optblock_handler(&optimizer);
     installed = true;
-    msg("[unslop-identity-audit] read-only mode; run_id=%s\n", optimizer.run_id.c_str());
+    msg("[unslop-identity-audit] read-only mode; run_id=%s; output=%s\n",
+        optimizer.run_id.c_str(), optimizer.output_path.c_str());
   }
   ~identity_audit_only_ctx_t()
   {
@@ -1017,7 +1034,7 @@ static plugmod_t *idaapi init()
     if ( !qgetenv("UNSLOP_IDENTITY_AUDIT_FILE", &path) || path.empty()
       || !qisabspath(path.c_str()) )
     {
-      msg("[unslop-identity-audit] set UNSLOP_IDENTITY_AUDIT_FILE to an absolute JSONL path\n");
+      msg("[unslop-identity-audit] set UNSLOP_IDENTITY_AUDIT_FILE to an absolute output base path\n");
       term_hexrays_plugin();
       return nullptr; // never fall through to the mutating context
     }
@@ -1025,7 +1042,7 @@ static plugmod_t *idaapi init()
     if ( !ctx->ready() )
     {
       delete ctx;
-      return nullptr; // exclusive file creation failed; never enable normal mode
+      return nullptr; // per-context output creation failed; never enable normal mode
     }
     return ctx;
   }

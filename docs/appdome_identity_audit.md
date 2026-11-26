@@ -1,11 +1,14 @@
 # Direct-state jump-table proof audit
 
 Set `UNSLOP_IDENTITY_AUDIT=1` and
-`UNSLOP_IDENTITY_AUDIT_FILE=/absolute/path/to/new-results.jsonl` before IDA
-loads the plugin. The file must not exist, and its parent directory must be trusted.
-The plugin creates it exclusively; an existing file or final-path symlink is
-rejected without enabling the normal optimizer. This selects a dedicated audit-only plugin context. The
-normal Unslopper optimizer and Hex-Rays lifecycle callbacks are not installed
+`UNSLOP_IDENTITY_AUDIT_FILE=/absolute/path/to/results-base` before IDA
+loads the plugin. This is a base path in a trusted writable directory. Each
+plugin context writes a distinct file named `<base>.<run_id>.jsonl`, and prints
+the exact path in IDA Output. The plugin checks that this derived file is
+absent before creating it; this is not an OS-atomic exclusive-create guarantee.
+The trusted parent directory must not be writable by an adversary. Failure to
+create the output never enables the normal optimizer. This setting selects a
+dedicated audit-only plugin context. The normal Unslopper optimizer and Hex-Rays lifecycle callbacks are not installed
 in this mode. Its optblock handler reads the `MMAT_GLBOPT1` microcode array,
 writes a JSONL record, and returns zero without editing the MBA or IDB.
 Only plugin actions 1 (disable), 2 (enable), 3 (status), and 4 (per-function
@@ -22,7 +25,7 @@ and context growth limits reject the proof. Tables over 128 keys are rejected.
 A conventional switch or a candidate with unresolved state is not counted as
 proved CFF.
 
-Each JSONL line is one event written to the exclusively owned file with
+Each JSONL line is one event written to its per-context file with
 `schema: 2`, a per-context `run_id`, monotonically increasing `sequence`,
 function EA, SHA-256 stored by
 IDA for the input, status, and optional case and context rows. A successful
