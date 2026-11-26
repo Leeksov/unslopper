@@ -1,10 +1,10 @@
 # Affine jump-table context recovery (experimental)
 
 **Current status: experimental and opt-in.** Set `UNSLOP_AFFINE_CONTEXT=1`
-before starting IDA to enable this path. A final-maturity microcode audit of
-all 35 edited functions found three differences that required manual
-classification; they are described below. The audit supports a bounded result
-on one exact image, not all-path equivalence or complete CFF removal.
+before starting IDA to enable this path. The first bounded trial edited 35 of
+188 strong affine candidates; a later full non-trampoline scan found 92
+affine-context completions. Both trials concern one exact image. Neither
+establishes all-path equivalence or complete CFF removal.
 
 Unslopper can analyze an Appdome-marked ARM64 `libloader` whose SHA-256 is
 `aa4ba77dc142c944b64fdbd8d3fb83a38b7e7200b13cb79422dc9da88cf10970`.
@@ -87,9 +87,61 @@ Representative measurements:
 | `0x24A28` | 863 lines, 86 `goto`, 2 `switch` | unchanged; downstream trial rejects it |
 
 These are sample-specific results. They do not establish recovery of all CFF
-functions in `libloader`, let alone all Appdome variants. The remaining
-non-stub functions and other CFF forms require separate coverage and behavior
-checks. The context mode is intentionally opt-in while that work continues.
+functions in `libloader`, let alone all Appdome variants. The full inventory
+and F5 comparison below cover the remaining non-trampoline functions, while
+other CFF forms and behavior on all paths remain unproved. The context mode
+remains opt-in.
 `tests/appdome_affine_context_ida.py` provides a sample-hash-gated manual
 OFF/ON/repeated-F5 regression on a disposable IDB; the binary is not in this
 repository.
+
+## Full non-trampoline scan
+
+The later opt-in scan used the same ARM64 image identified above and
+IDA/Hex-Rays 9.5.0.261026. An inventory found **76,263 IDA-defined
+functions**. Structural and byte-template checks identified **65,535 uniform
+88-byte resolver trampolines**; they were not each F5-decompiled. The
+remaining **10,728 functions were all attempted** with the combined plugin
+(build SHA-256
+`1c39dca771c302f567d0f750ce9e13040aa05889efddda6e096c9c25fdc0650d`)
+and `UNSLOP_AFFINE_CONTEXT=1`, in 314 bounded batches. The OFF comparison used
+the same image.
+
+| Full-scan measure | Result |
+|---|---:|
+| ON F5 successes / attempts | 10,711 / 10,728 |
+| ON F5 failures matching OFF failures | 17 / 17 |
+| ON-only F5 failures | 0 |
+| Plugin internal errors after every batch | 0 |
+| Functions touched by all plugin passes | 1,000 |
+| Edges reported changed by all plugin passes | 9,427 |
+| Affine-context completions (`stack.reason=complete`) | 92 |
+| Affine completions inside / outside the original 188-candidate set | 36 / 56 |
+
+The 1,000 touched functions and 9,427 edges include **all** enabled passes;
+they are not counts of affine-context rewrites. The 188-candidate classifier
+was a strong-affine heuristic, not a complete inventory: 56 context
+completions lay outside it. F5 success only means Hex-Rays produced
+pseudocode, and the plugin's edge counter is a diagnostic, not an independent
+proof that the transformed machine code has equivalent behavior.
+
+At final `cfunc.mba` maturity 8, an OFF/ON effect audit reviewed **53
+high-tier action-4 deltas, 5 small-switch context completions, and 10 other
+complex context completions**, including all 56 affine completions outside
+the initial candidate set. Recursive call, indirect call, store, and external
+effect origins were compared, with repeat ON F5. Most audited multisets
+matched. The exceptions required individual review: `0x13E374` and
+`0x252694` lost synthetic default abort calls after their bounded selector
+cases were mapped; `0x1B65B8` copied one native store into mutually exclusive
+successors. At `0x33BE68`, an existing **default pass**, not the affine pass,
+changed the final MBA representation of 24 bytes of local stack zeroing and
+regressed F5 readability from 86 lines / 0 `goto` to 186 lines / 1 `goto`.
+This remains a decompilation-quality issue.
+
+The SDK does not expose a supported atomic swap or rollback of a live MBA.
+The detached preflight reaches GLBOPT2, then the accepted edit is replayed in
+the live array; the preflight cannot certify GLBOPT3 or final F5. A previous
+uncapped trial produced a bulk-only `INTERR 50342` at `0x25CA34`; the current
+128-case cap excludes it. The full-scan observations apply only to this exact
+sample and tested build. **They do not show that all CFF has been decrypted or
+prove all-path equivalence.**

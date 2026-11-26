@@ -6,7 +6,7 @@
 | Classic OLLVM (sr-tream, Junod) | profiles/ollvm.cpp | done (same scramble32) |
 | Promon SHIELD BST CFF + opaque | profiles/promon.cpp | done |
 | Promon Android ARM32 Thumb CFF + encoded calls (Valu 10.5.3) | core/promon_thumb_audit.cpp (action 40) | read-only, hash-gated audit of two hubs; rewrite not validated |
-| Appdome-associated affine jump-table CFF | core/dispatcher.cpp + core/jtbl_affine.h; opt-in core/stack_jtbl.cpp context path | [Exact state-map detection](appdome_affine_jtbl.md); [experimental context recovery](appdome_affine_context.md) edited 35/188 strong-affine candidates in one `libloader` build (9 full visible, 25 partial, 1 mixed). Final-MBA effect differences were audited; other CFF forms and builds remain unverified. |
+| Appdome-associated affine jump-table CFF | core/dispatcher.cpp + core/jtbl_affine.h; opt-in core/stack_jtbl.cpp context path | [Exact state-map detection](appdome_affine_jtbl.md); [experimental context recovery](appdome_affine_context.md): 92 affine completions in a full F5 scan of 10,728 non-trampoline functions in one `libloader` build (36 within the original 188 strong-affine candidates, 56 outside). All plugin passes together touched 1,000 functions / 9,427 edges. Final-MBA effect deltas were audited in selected functions; all-path equivalence, full CFF removal, and other builds remain unverified. |
 | DexProtector XOR+ADD CFF | profiles/dexprotector.cpp | done |
 | BitGuard / MVG jump-table CFF | profiles/mvg.cpp | done |
 | Substitution / MBA (Hikari full set) | mba_simplify.cpp | expand from docs/hikari_mba_rules.md |
