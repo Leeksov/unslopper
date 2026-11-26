@@ -1,6 +1,7 @@
 #include "stack_jtbl.h"
 #include "affine_context_gate.h"
 #include "block_dup.h"
+#include "identity_case_key.h"
 #include "unslop_log.h"
 #include <algorithm>
 #include <iterator>
@@ -1065,6 +1066,7 @@ IdentityAuditResult audit_identity_jtbl(mba_t *mba)
       candidate_raw = *source;
     }
     std::map<uint64_t, int> candidate_cases;
+    std::map<uint64_t, int64_t> case_origins;
     for (int j = 0; j < int(tail->r.c->size()); ++j)
     {
       const int target = tail->r.c->targets[j];
@@ -1072,15 +1074,16 @@ IdentityAuditResult audit_identity_jtbl(mba_t *mba)
         return reject("invalid_case_target");
       for (auto n : tail->r.c->values[j])
       {
-        const uint64_t key = uint64_t(n);
-        if (key > mask(tail->l.size)
-          || (definition != nullptr && definition->opcode == m_xdu
-              && key > mask(candidate_raw.size)))
+        const int xdu_source_bytes = definition != nullptr && definition->opcode == m_xdu
+          ? candidate_raw.size : 0;
+        const auto inserted = insert_identity_case(int64_t(n), target,
+          tail->l.size, xdu_source_bytes, candidate_cases, case_origins);
+        if (inserted == IdentityCaseInsert::outside_width)
           return reject("case_outside_selector_width");
-        const auto old = candidate_cases.find(key);
-        if (old != candidate_cases.end() && old->second != target)
+        if (inserted == IdentityCaseInsert::conflicting_target)
           return reject("conflicting_case_target");
-        candidate_cases[key] = target;
+        if (inserted == IdentityCaseInsert::aliased_label)
+          return reject("case_key_alias");
         if (candidate_cases.size() > 128)
         {
           out.dispatcher_block = b;

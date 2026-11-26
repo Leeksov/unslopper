@@ -20,7 +20,13 @@ changes to the IDB.
 The detector requires one register-selected `m_jtbl`, exact case keys, and at
 least two distinct case targets with paths back to that dispatcher. It
 accepts a direct selector register or one width-checked `mov`, `low`, or
-zero-extension. It requires each reachable dispatcher context to resolve to
+zero-extension. Hex-Rays stores jump-table labels as signed `sval_t` values;
+the audit accepts a negative label only when it fits the selector's signed
+width, then compares its width-limited bit pattern. Positive labels must fit
+the unsigned width. Two distinct labels that collapse to one bit pattern are
+rejected, even if they name the same target. Zero-extended selectors also
+require the resulting key to fit the source width. The audit requires each
+reachable dispatcher context to resolve to
 a mapped key. Unknown selectors, unsupported exits, inconsistent successors,
 and context growth limits reject the proof. Tables over 128 keys are rejected.
 A conventional switch or a candidate with unresolved state is not counted as
@@ -62,6 +68,21 @@ agreed on all statuses and normalized state-to-target EAs: 465 `proved`;
 and 1 multiple-dispatcher failure. Four fixture functions produced
 byte-identical OFF and audit-only F5 output from copies of the same IDB.
 Plugin action 4 reported zero CFG edge edits for all 502 functions.
+
+The signed-case revision was then tested on the same SHA in a fresh
+audit-only IDA process. Its 529-address set comprised the original 502 and
+27 disjoint high-goto structural leads (21 direct-state switches and six
+state jump tables). All 529 F5 calls succeeded and each address produced one
+audit row. The result was **482 `proved` maps**: all 465 previously proved
+maps kept identical normalized `state → target EA` pairs; 17 of the 27
+additional leads were proved. The 47 remaining rows were 33 unknown or
+unmapped selectors, seven without a qualifying identity dispatcher, five
+over the 128-case budget, and two with multiple candidate dispatchers.
+The two old selector-width failures advanced to an unknown-selector result
+and a multiple-dispatcher result, respectively; neither was counted as
+proved. Three newly proved high-goto fixtures had byte-identical OFF and
+audit-only F5 text on copies of the same saved IDB. This is a read-only
+state-map gain, not automatic unflattening.
 
 These results establish bounded static state-map coverage for this exact
 microcode snapshot. They do not establish all-path functional equivalence,

@@ -84,4 +84,6 @@ target_include_directories(unslopper PRIVATE
 if(BUILD_TESTING)
     add_executable(test_bst_safety tests/test_bst_safety.cpp)
     add_test(NAME bst_safety COMMAND test_bst_safety)
+    add_executable(test_identity_case_key tests/test_identity_case_key.cpp)
+    add_test(NAME identity_case_key COMMAND test_identity_case_key)
 endif()

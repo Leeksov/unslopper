@@ -32,6 +32,10 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror tests/test_jtbl_affine.cpp -o "$RUNNER_TEMP/test_jtbl_affine"
           "$RUNNER_TEMP/test_jtbl_affine"
+      - name: Test signed identity jump-table keys
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror tests/test_identity_case_key.cpp -o "$RUNNER_TEMP/test_identity_case_key"
+          "$RUNNER_TEMP/test_identity_case_key"
       - name: Test dispatcher removal postcondition
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror tests/test_dispatcher_postcondition.cpp -o "$RUNNER_TEMP/test_dispatcher_postcondition"
