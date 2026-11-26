@@ -133,10 +133,17 @@ effect origins were compared, with repeat ON F5. Most audited multisets
 matched. The exceptions required individual review: `0x13E374` and
 `0x252694` lost synthetic default abort calls after their bounded selector
 cases were mapped; `0x1B65B8` copied one native store into mutually exclusive
-successors. At `0x33BE68`, an existing **default pass**, not the affine pass,
-changed the final MBA representation of 24 bytes of local stack zeroing and
-regressed F5 readability from 86 lines / 0 `goto` to 186 lines / 1 `goto`.
-This remains a decompilation-quality issue.
+successors. A selected trial on this experimental build recorded an F5
+readability regression at `0x33BE68` (86 lines / 0 `goto` to 186 lines / 1
+`goto`) and a different final-MBA representation of 24 bytes of local stack
+zeroing. That observation belongs to this trial; it is not an established
+regression in the current public plugin. In a later paired control using fresh
+copies of the same saved IDB, IDA 9.5 and the v1.6.0 macOS ARM64 release build,
+OFF and ON F5 at `0x33BE68` were byte-identical on both the first and a forced
+repeat decompilation: 183 lines, 1 `goto`, SHA-256
+`3bb114fd7c378b85fa455ce14ad94cb1e6ba62b240daa68466d1d41f6b4d4f1a`.
+The discrepancy could reflect a build or IDB state difference; the saved
+experimental trial does not isolate its cause.
 
 The SDK does not expose a supported atomic swap or rollback of a live MBA.
 The detached preflight reaches GLBOPT2, then the accepted edit is replayed in
