@@ -19,9 +19,14 @@
 #include <hexrays.hpp>
 #include <funcs.hpp>
 #include <kernwin.hpp>
+#include <nalt.hpp>
+#include <atomic>
 #include <cstdlib>
+#include <fcntl.h>
+#include <iomanip>
 #include <map>
 #include <set>
+#include <sstream>
 #include <vector>
 
 #include "unslop_types.h"
@@ -774,6 +779,199 @@ bool idaapi plugin_ctx_t::run(size_t arg)
   return true;
 }
 
+// Dedicated audit-only plugin context. It installs no Hex-Rays lifecycle
+// callback, so the ordinary Arxan, verified-jump, opaque, hash, and CFG
+// mutation paths above cannot run while this mode is selected at init.
+struct identity_audit_only_ctx_t : public plugmod_t
+{
+  struct audit_optblock_t : public optblock_t
+  {
+    qstring output_path;
+    std::string run_id;
+    int output_handle = -1;
+    uint64_t sequence = 0;
+    bool active = true;
+    bool failed = false;
+    std::set<ea_t> seen;
+    std::map<ea_t, IdentityAuditResult> results;
+    std::set<ea_t> write_errors;
+    uint64_t error_count = 0;
+    ea_t last_error_ea = BADADDR;
+    const char *last_error_reason = "none";
+
+    void mark_error(ea_t ea, const char *reason) noexcept
+    {
+      if (last_error_ea != ea) ++error_count;
+      last_error_ea = ea;
+      last_error_reason = reason;
+      failed = true;
+      active = false;
+    }
+
+    audit_optblock_t(const qstring &path) : output_path(path)
+    {
+      static std::atomic<uint64_t> next_nonce{0};
+      std::ostringstream id;
+      id << qgetpid() << '-' << (unsigned long long)qtime64()
+         << '-' << ++next_nonce;
+      run_id = id.str();
+      // Exclusive creation rejects an existing file or final-path symlink.
+      // Each plugin context owns its own output file; no shared append race.
+      output_handle = qopen(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_BINARY);
+    }
+    ~audit_optblock_t()
+    {
+      if (output_handle >= 0 && qclose(output_handle) != 0)
+        msg("[unslop-identity-audit] JSONL close failed\n");
+    }
+
+    bool write_event(ea_t ea, const IdentityAuditResult &result)
+    {
+      uchar hash[32];
+      const bool has_hash = retrieve_input_file_sha256(hash);
+      std::ostringstream line;
+      line << "{\"schema\":2,\"run_id\":\"" << run_id
+           << "\",\"sequence\":" << ++sequence
+           << ",\"entry_ea\":" << (unsigned long long)ea
+           << ",\"sample_sha256\":";
+      if (has_hash)
+      {
+        line << '"' << std::hex << std::setfill('0');
+        for (uchar byte : hash) line << std::setw(2) << unsigned(byte);
+        line << std::dec << '"';
+      }
+      else
+        line << "null";
+      line << ",\"status\":\"" << result.reason
+           << "\",\"dispatcher_block\":" << result.dispatcher_block
+           << ",\"dispatcher_ea\":";
+      if (result.dispatcher_ea == BADADDR)
+        line << "null";
+      else
+        line << (unsigned long long)result.dispatcher_ea;
+      line << ",\"context_count\":" << result.contexts
+           << ",\"cases\":[";
+      for (size_t i = 0; i < result.cases.size(); ++i)
+      {
+        const auto &c = result.cases[i];
+        if (i) line << ',';
+        line << '[' << c.state << ',' << c.target_block << ','
+             << (unsigned long long)c.target_ea << ']';
+      }
+      line << "],\"dispatch_contexts\":[";
+      for (size_t i = 0; i < result.dispatch_contexts.size(); ++i)
+      {
+        const auto &c = result.dispatch_contexts[i];
+        if (i) line << ',';
+        line << '[' << c.context_id << ',' << c.state << ','
+             << c.next_context_id << ',' << c.target_block << ','
+             << (unsigned long long)c.target_ea << ']';
+      }
+      line << "]}\n";
+      const std::string bytes = line.str();
+      if (output_handle < 0)
+        return false;
+      return qwrite(output_handle, bytes.data(), bytes.size()) == int(bytes.size());
+    }
+
+    virtual int idaapi func(mblock_t *block) override
+    {
+      if (!active || block == nullptr || block->mba == nullptr
+        || block->mba->maturity != MMAT_GLBOPT1)
+        return 0;
+      mba_t *mba = block->mba;
+      try
+      {
+        if (!seen.insert(mba->entry_ea).second)
+          return 0; // one stable first-pass record per function and run_id
+        IdentityAuditResult result = audit_identity_jtbl(mba);
+        results[mba->entry_ea] = result;
+        if (!write_event(mba->entry_ea, result))
+        {
+          mark_error(mba->entry_ea, "io_write_failed");
+          try { write_errors.insert(mba->entry_ea); } catch (...) {}
+          msg("[unslop-identity-audit] JSONL write failed at %a; audit disabled\n",
+              mba->entry_ea);
+        }
+      }
+      catch (...)
+      {
+        mark_error(mba->entry_ea, "callback_exception");
+        try { write_errors.insert(mba->entry_ea); } catch (...) {}
+        msg("[unslop-identity-audit] audit/serialization exception at %a; audit disabled\n",
+            mba->entry_ea);
+      }
+      return 0;
+    }
+  } optimizer;
+
+  bool installed = false;
+  identity_audit_only_ctx_t(const qstring &path) : optimizer(path)
+  {
+    if (optimizer.output_handle < 0)
+    {
+      msg("[unslop-identity-audit] output must be a new file in a trusted directory\n");
+      return;
+    }
+    install_optblock_handler(&optimizer);
+    installed = true;
+    msg("[unslop-identity-audit] read-only mode; run_id=%s\n", optimizer.run_id.c_str());
+  }
+  ~identity_audit_only_ctx_t()
+  {
+    if (installed) remove_optblock_handler(&optimizer);
+    term_hexrays_plugin();
+  }
+  bool ready() const { return installed; }
+  virtual bool idaapi run(size_t arg) override
+  {
+    if (arg == 1)
+    {
+      optimizer.active = false;
+      msg("[unslop-identity-audit] disabled\n");
+      return true;
+    }
+    if (arg == 2)
+    {
+      if (optimizer.failed)
+      {
+        msg("[unslop-identity-audit] cannot re-enable after a write/analysis failure\n");
+        return false;
+      }
+      optimizer.active = true;
+      msg("[unslop-identity-audit] enabled\n");
+      return true;
+    }
+    if (arg == 3)
+    {
+      msg("[unslop-identity-audit] %s; run_id=%s; %d function(s); %llu error(s); last_error=%a:%s; 0 plugin edges\n",
+          optimizer.active ? "ON" : "OFF", optimizer.run_id.c_str(),
+          int(optimizer.results.size()), (unsigned long long)optimizer.error_count,
+          optimizer.last_error_ea, optimizer.last_error_reason);
+      return true;
+    }
+    if (arg == 4)
+    {
+      for (const auto &row : optimizer.results)
+      {
+        const IdentityAuditResult &r = row.second;
+        msg("[unslop-identity-audit-report] {\"ea\":\"0x%llx\",\"status\":\"%s\",\"cases\":%d,\"contexts\":%d,\"edges\":0,\"write_error\":%d,\"callback_error\":%d}\n",
+            (unsigned long long)row.first, r.reason.c_str(), int(r.cases.size()),
+            r.contexts, optimizer.write_errors.count(row.first) ? 1 : 0,
+            optimizer.last_error_ea == row.first ? 1 : 0);
+      }
+      if (optimizer.last_error_ea != BADADDR
+        && optimizer.results.count(optimizer.last_error_ea) == 0)
+        msg("[unslop-identity-audit-report] {\"ea\":\"0x%llx\",\"status\":\"%s\",\"cases\":0,\"contexts\":0,\"edges\":0,\"write_error\":1,\"callback_error\":1}\n",
+            (unsigned long long)optimizer.last_error_ea,
+            optimizer.last_error_reason);
+      return true;
+    }
+    msg("[unslop-identity-audit] only actions 1, 2, 3, and 4 are available\n");
+    return false;
+  }
+};
+
 } // namespace unslop
 
 //--------------------------------------------------------------------------
@@ -811,6 +1009,26 @@ static plugmod_t *idaapi init()
 
   // Initialize the debug-logging / diagnostics subsystem from the environment.
   unslop::log_init();
+
+  qstring identity_audit;
+  if ( qgetenv("UNSLOP_IDENTITY_AUDIT", &identity_audit) && identity_audit == "1" )
+  {
+    qstring path;
+    if ( !qgetenv("UNSLOP_IDENTITY_AUDIT_FILE", &path) || path.empty()
+      || !qisabspath(path.c_str()) )
+    {
+      msg("[unslop-identity-audit] set UNSLOP_IDENTITY_AUDIT_FILE to an absolute JSONL path\n");
+      term_hexrays_plugin();
+      return nullptr; // never fall through to the mutating context
+    }
+    auto *ctx = new unslop::identity_audit_only_ctx_t(path);
+    if ( !ctx->ready() )
+    {
+      delete ctx;
+      return nullptr; // exclusive file creation failed; never enable normal mode
+    }
+    return ctx;
+  }
 
   // FIX 3: read the block-count cap override once, at plugin init.
   qstring env;

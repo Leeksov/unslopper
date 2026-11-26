@@ -165,6 +165,7 @@ was measured on one exact `libloader` image; see [coverage and limits](docs/appd
 | `UNSLOP_LOG=0..5`, `UNSLOP_LOG_FILE=…`, `UNSLOP_ONLY_EA=0x…` | diagnostics |
 | `UNSLOP_PROMON_THUMB_AUDIT=1` | permit action `40` on the [audited Valu ARM32 image](docs/promon_android_thumb.md); no IDB edits |
 | `UNSLOP_AFFINE_CONTEXT=1` | opt in to [experimental affine jump-table context recovery](docs/appdome_affine_context.md); validated on one exact image, with unresolved paths rejected |
+| `UNSLOP_IDENTITY_AUDIT=1`, `UNSLOP_IDENTITY_AUDIT_FILE=/absolute/new-path.jsonl` | select [read-only direct-state jump-table proof export](docs/appdome_identity_audit.md); all normal mutation passes are bypassed |
 
 ### Automatic C++ Arxan branch recovery
 

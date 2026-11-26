@@ -333,6 +333,7 @@ struct Node
   bool dispatch = false;
   bool ordinary_jtbl = false;
   int parent = -1; // first discovered predecessor context (diagnostic only)
+  std::optional<uint64_t> selector;
 };
 void goto_only(mblock_t *b, int dst, bool replace_tail)
 {
@@ -724,8 +725,6 @@ int unflatten_affine_context_jtbl(mba_t *mba, StackJtblDiagnostics *diagnostics)
     // Larger affine tables are expensive to trial and have not produced a
     // verified recovery in this corpus. Reject before context construction
     // or any detached optimizer work; 128 still exceeds every edited fixture.
-    if (candidate_cases.size() > 128)
-      return reject("case_budget");
     disp = b;
     raw_state = *variable(arith.l);
     branch_selector = *selector;
@@ -1002,5 +1001,271 @@ int unflatten_affine_context_jtbl(mba_t *mba, StackJtblDiagnostics *diagnostics)
   QASSERT(59992, (emit(mba), true));
   if (diagnostics) diagnostics->reason = "complete";
   return dispatches;
+}
+// Bounded, read-only state-map proof for direct-register jump tables. This is
+// intentionally separate from the affine emitter above: no edit operation is
+// reachable from this function.
+IdentityAuditResult audit_identity_jtbl(mba_t *mba)
+{
+  IdentityAuditResult out;
+  auto reject = [&](const char *reason) {
+    out.reason = reason;
+    out.cases.clear();
+    out.dispatch_contexts.clear();
+    return out;
+  };
+  if (mba == nullptr || mba->maturity != MMAT_GLBOPT1)
+    return reject("wrong_maturity");
+  const int original = mba->qty;
+  if (original < 6 || original > 1000)
+    return reject("input_block_limit");
+
+  int disp = -1;
+  Var raw_state, branch_selector;
+  std::map<uint64_t, int> cases;
+  for (int b = 1; b < original - 1; ++b)
+  {
+    mblock_t *blk = mba->get_mblock(b);
+    minsn_t *tail = blk->tail;
+    if (tail == nullptr || tail->opcode != m_jtbl || blk->npred() < 3
+      || tail->l.t != mop_r || (tail->l.size != 4 && tail->l.size != 8)
+      || tail->r.t != mop_c || tail->r.c == nullptr)
+      continue;
+    const auto selector = variable(tail->l);
+    if (!selector)
+      continue;
+    const minsn_t *definition = nullptr;
+    for (minsn_t *ins = blk->head; ins != tail; ins = ins->next)
+    {
+      if (ins == nullptr)
+        return reject("malformed_dispatcher_body");
+      const auto dst = variable(ins->d);
+      if (dst && overlaps(*dst, *selector))
+        definition = ins;
+    }
+    Var candidate_raw;
+    if (definition == nullptr)
+      candidate_raw = *selector;
+    else
+    {
+      if (definition->d.t != mop_r || definition->d.r != tail->l.r
+        || definition->d.size != tail->l.size || definition->l.t != mop_r)
+        continue;
+      const int input_size = definition->l.size;
+      const int output_size = definition->d.size;
+      const bool transparent =
+        (definition->opcode == m_mov && input_size == output_size)
+        || (definition->opcode == m_low && input_size >= output_size)
+        || (definition->opcode == m_xdu && input_size < output_size);
+      if (!transparent)
+        continue;
+      const auto source = variable(definition->l);
+      if (!source)
+        continue;
+      candidate_raw = *source;
+    }
+    std::map<uint64_t, int> candidate_cases;
+    for (int j = 0; j < int(tail->r.c->size()); ++j)
+    {
+      const int target = tail->r.c->targets[j];
+      if (target < 0 || target >= original)
+        return reject("invalid_case_target");
+      for (auto n : tail->r.c->values[j])
+      {
+        const uint64_t key = uint64_t(n);
+        if (key > mask(tail->l.size)
+          || (definition != nullptr && definition->opcode == m_xdu
+              && key > mask(candidate_raw.size)))
+          return reject("case_outside_selector_width");
+        const auto old = candidate_cases.find(key);
+        if (old != candidate_cases.end() && old->second != target)
+          return reject("conflicting_case_target");
+        candidate_cases[key] = target;
+        if (candidate_cases.size() > 128)
+        {
+          out.dispatcher_block = b;
+          out.dispatcher_ea = blk->start;
+          return reject("case_budget");
+        }
+      }
+    }
+    if (candidate_cases.size() < 4)
+      continue;
+    // A conventional switch may also use a register. Require two distinct
+    // case targets with paths back to this very dispatcher.
+    std::set<int> feedback_targets;
+    for (const auto &kv : candidate_cases)
+    {
+      const int first = kv.second;
+      if (feedback_targets.count(first))
+        continue;
+      std::vector<char> visited(original, 0);
+      std::vector<int> queue{first};
+      visited[first] = 1;
+      for (size_t qi = 0; qi < queue.size(); ++qi)
+      {
+        const int cur = queue[qi];
+        if (cur == b) { feedback_targets.insert(first); break; }
+        if (cur == original - 1) continue;
+        const mblock_t *next = mba->get_mblock(cur);
+        for (int si = 0; si < next->nsucc(); ++si)
+        {
+          const int dst = next->succ(si);
+          if (dst < 0 || dst >= original)
+            return reject("invalid_feedback_successor");
+          if (!visited[dst]) { visited[dst] = 1; queue.push_back(dst); }
+        }
+      }
+    }
+    if (feedback_targets.size() < 2)
+      continue;
+    if (disp != -1)
+      return reject("multiple_candidate_dispatchers");
+    disp = b;
+    out.dispatcher_block = b;
+    out.dispatcher_ea = blk->start;
+    if (candidate_cases.size() > 128)
+      return reject("case_budget");
+    raw_state = candidate_raw;
+    branch_selector = *selector;
+    cases = std::move(candidate_cases);
+  }
+  if (disp < 0)
+    return reject("no_identity_dispatcher");
+
+  std::vector<Vars> need(original);
+  need[disp].insert(raw_state);
+  bool changed = true;
+  for (int iter = 0; changed && iter < original * 2; ++iter)
+  {
+    changed = false;
+    for (int b = original - 2; b > 0; --b)
+    {
+      if (b == disp) continue;
+      Vars n;
+      mblock_t *blk = mba->get_mblock(b);
+      for (int j = 0; j < blk->nsucc(); ++j)
+      {
+        const int s = blk->succ(j);
+        if (s < 0 || s >= original)
+          return reject("invalid_successor");
+        n.insert(need[s].begin(), need[s].end());
+      }
+      n = transfer_need(blk, n, true);
+      if (n != need[b]) { need[b] = std::move(n); changed = true; }
+    }
+  }
+  if (changed)
+    return reject("demand_did_not_converge");
+
+  std::vector<Node> nodes;
+  std::map<Key, int> seen;
+  int active_parent = -1;
+  auto intern = [&](int block, const Env &env)
+  {
+    if (block == original - 1)
+      return -1;
+    Key key{block, {}};
+    for (const auto &v : need[block])
+      for (const auto &kv : env)
+        if (overlaps(v, kv.first)) key.env.insert(kv);
+    const auto old = seen.find(key);
+    if (old != seen.end()) return old->second;
+    const int id = int(nodes.size());
+    seen.emplace(key, id);
+    nodes.push_back({key, {}, block == disp, false, active_parent});
+    return id;
+  };
+  if (mba->get_mblock(0)->nsucc() != 1 || mba->get_mblock(0)->succ(0) != 1)
+    return reject("unsupported_entry");
+  intern(1, {});
+  int dispatches = 0;
+  for (size_t i = 0; i < nodes.size(); ++i)
+  {
+    if (nodes.size() > 2048 || nodes.size() > size_t(original * 12))
+      return reject("context_budget");
+    active_parent = int(i);
+    const int b = nodes[i].key.block;
+    mblock_t *blk = mba->get_mblock(b);
+    Env env = nodes[i].key.env;
+    run_body(blk, env, true);
+    std::vector<int> succ;
+    if (b == disp)
+    {
+      const auto value = masked_value(blk->tail->l, env, mask(branch_selector.size));
+      if (!value || cases.count(*value) == 0)
+        return reject("unknown_or_unmapped_selector");
+      succ.push_back(intern(cases.at(*value), env));
+      nodes[i].selector = *value;
+      ++dispatches;
+    }
+    else if (blk->tail && blk->tail->opcode == m_jtbl)
+    {
+      const mcases_t *table = blk->tail->r.t == mop_c ? blk->tail->r.c : nullptr;
+      if (table == nullptr || table->size() < 2 || table->size() > 64)
+        return reject("unsupported_ordinary_jtbl");
+      std::set<int> table_targets;
+      for (int j = 0; j < int(table->size()); ++j)
+      {
+        const int target = table->targets[j];
+        if (target < 0 || target >= original)
+          return reject("invalid_ordinary_case_target");
+        table_targets.insert(target);
+        succ.push_back(intern(target, env));
+      }
+      if (table_targets.size() != size_t(blk->nsucc()))
+        return reject("ordinary_case_successor_mismatch");
+      for (int j = 0; j < blk->nsucc(); ++j)
+        if (table_targets.count(blk->succ(j)) == 0)
+          return reject("ordinary_case_successor_mismatch");
+      nodes[i].ordinary_jtbl = true;
+    }
+    else if (blk->nsucc() == 2)
+    {
+      const minsn_t *t = blk->tail;
+      if (t == nullptr || !is_mcode_jcond(t->opcode) || t->d.t != mop_b
+        || t->d.b < 0 || t->d.b >= original || b + 1 >= original)
+        return reject("unsupported_conditional_exit");
+      const int first = blk->succ(0), second = blk->succ(1);
+      if (t->d.b == b + 1
+        || !((first == t->d.b && second == b + 1)
+          || (second == t->d.b && first == b + 1)))
+        return reject("conditional_successor_mismatch");
+      succ.push_back(intern(t->d.b, env));
+      succ.push_back(intern(b + 1, env));
+    }
+    else if (blk->nsucc() == 1)
+    {
+      if (blk->tail && blk->tail->opcode == m_ijmp)
+        return reject("unresolved_indirect_exit");
+      const int dst = blk->succ(0);
+      if (dst < 0 || dst >= original)
+        return reject("invalid_successor");
+      succ.push_back(intern(dst, env));
+    }
+    else if (blk->nsucc() != 0)
+      return reject("unsupported_successor_count");
+    nodes[i].succ = std::move(succ);
+  }
+  if (dispatches < 2)
+    return reject("insufficient_dispatch_contexts");
+  out.reason = "proved";
+  out.contexts = int(nodes.size());
+  for (const auto &kv : cases)
+    out.cases.push_back({kv.first, kv.second, mba->get_mblock(kv.second)->start});
+  for (size_t i = 0; i < nodes.size(); ++i)
+  {
+    const Node &n = nodes[i];
+    if (!n.dispatch)
+      continue;
+    if (!n.selector || n.succ.size() != 1)
+      return reject("malformed_proved_context");
+    const int next_context = n.succ[0];
+    const int target_block = next_context < 0
+      ? original - 1 : nodes[next_context].key.block;
+    out.dispatch_contexts.push_back({int(i), *n.selector, next_context,
+                                     target_block, mba->get_mblock(target_block)->start});
+  }
+  return out;
 }
 } // namespace unslop
