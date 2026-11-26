@@ -31,6 +31,38 @@
 | OLLVM-22 Virtual Call (synthetic vtables) | virtual_call.cpp | TODO |
 | OLLVM-22 VM (bytecode virtualization) | unslop_vm_lift.py (standalone) | TODO — runtime-assisted |
 
+## Exact-sample default-mode CFF audit (`libloader`, v1.6.0)
+
+The public v1.6.0 macOS ARM64 release was tested with IDA/Hex-Rays
+9.5.0.261026 on a disposable copy of the ARM64 `libloader` IDB. The sample
+SHA-256 recorded in the IDB is
+`aa4ba77dc142c944b64fdbd8d3fb83a38b7e7200b13cb79422dc9da88cf10970`;
+the original image was unavailable for independent rehashing. The scan attempted
+F5 on all 10,728 non-trampoline functions. F5 succeeded on 10,711; the same 17
+addresses failed in the earlier OFF scan, with **zero ON-only failures**.
+Action 3 reported **899 edited functions, 8,104 edges, and zero plugin errors**.
+Action 4 independently attributed the same 899 functions and 8,104 edges; it
+had 10,722 per-function rows because six of the 17 F5 failures produced no
+diagnostic row. The 65,535 byte-verified resolver trampolines were excluded.
+
+| OFF-F5 triage family | Functions | v1.6.0 edits | Reported edges |
+| --- | ---: | ---: | ---: |
+| Strong affine state switch | 188 | 0 | 0 |
+| Possible affine state switch or affine expression | 63 | 0 | 0 |
+| Comparison-tree candidate | 211 | 3 | 12 |
+| Strong direct-state switch | 502 | 7 | 78 |
+| Possible direct-state switch | 2,288 | 697 | 5,977 |
+| High-goto, initially unclassified | 60 | 0 | 0 |
+| No state-switch evidence | 7,399 | 192 | 2,037 |
+
+These labels are a disjoint *heuristic* partition of the 10,711 successful F5
+functions, not counts of confirmed CFF. The 17 failed functions are outside
+the table. An earlier full scan of plugin commit `d5a8ba5` reported 921 edited
+functions and 8,443 edges on the same sample. That was a different plugin
+revision; the count difference does not establish a correctness or coverage
+change for an individual function. Neither an edited edge nor successful F5
+proves full CFF removal or all-path equivalence.
+
 ## VM devirtualization — honest limits
 The OLLVM-22 `vm` pass is a full custom bytecode VM (51 opcodes, 4 typed register
 files, per-function opcode permutation, AES-128-CTR or LCG bytecode encryption,
